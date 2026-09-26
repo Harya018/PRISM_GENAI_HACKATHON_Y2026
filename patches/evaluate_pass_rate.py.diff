@@ -1,11 +1,13 @@
 ﻿# REASON: harness reliability/tooling only; no scoring logic changed. Adds an opt-in
 # --proxy-llm Gemini judge (identical prompt to the official gpt-4o judge) for use only when
 # OPENAI_API_KEY is unavailable; the default --use-llm path (gpt-4o) is untouched.
+# UPDATE: gemini-2.5-flash was deprecated server-side mid-session (404, "no longer available to
+# new users") — swapped to gemini-3.8-flash, verified working via a direct API call first.
 diff --git a/v3/evaluate_pass_rate.py b/v3/evaluate_pass_rate.py
-index a07c7a5..f8273a1 100644
+index a07c7a5..c44b804 100644
 --- a/v3/evaluate_pass_rate.py
 +++ b/v3/evaluate_pass_rate.py
-@@ -58,6 +58,25 @@ except ImportError:
+@@ -58,6 +58,26 @@ except ImportError:
  # ==============================================================================
  
  _openai_client = None
@@ -15,7 +17,8 @@ index a07c7a5..f8273a1 100644
 +# so --proxy-llm swaps gpt-4o for Gemini using the EXACT SAME prompt, labelled PROXY in the
 +# report so it's never confused with the official pinned judge.
 +JUDGE_BACKEND = "openai"
-+GEMINI_PROXY_MODEL = "gemini-2.5-flash"
++GEMINI_PROXY_MODEL = "gemini-3.8-flash"  # gemini-2.5-flash returns 404 ("no longer available
++# to new users") as of this session — verified working via a direct API call before switching
 +
 +
 +def _get_gemini_client():
@@ -31,7 +34,7 @@ index a07c7a5..f8273a1 100644
  
  
  def _strip_json_fences(text: str) -> str:
-@@ -84,13 +103,8 @@ def _get_openai_client():
+@@ -84,13 +104,8 @@ def _get_openai_client():
      return _openai_client
  
  
@@ -47,7 +50,7 @@ index a07c7a5..f8273a1 100644
  
  Function: {function_name}
  Expected arguments: {json.dumps(expected_args)}
-@@ -107,6 +121,33 @@ Rules:
+@@ -107,6 +122,33 @@ Rules:
  Respond with ONLY a JSON object:
  {{"correct": true/false, "explanation": "brief reason"}}"""
  
@@ -81,7 +84,7 @@ index a07c7a5..f8273a1 100644
      try:
          resp = client.chat.completions.create(
              model="gpt-4o",
-@@ -365,6 +406,13 @@ def evaluate_all_pass_rate(
+@@ -365,6 +407,13 @@ def evaluate_all_pass_rate(
      report = {
          "benchmark_name":   benchmark_data.get("benchmark_name", ""),
          "evaluated_at":     datetime.now().isoformat(),
@@ -95,7 +98,7 @@ index a07c7a5..f8273a1 100644
          "total_scenarios":  total,
          "overall_pass_rate": pass_rate,
          "passed":           len(passed_list),
-@@ -499,8 +547,16 @@ def main():
+@@ -499,8 +548,16 @@ def main():
      parser.add_argument("--dry-run",      action="store_true")
      parser.add_argument("--use-llm",      action="store_true",
                          help="Use gpt-4o as LLM judge for arguments and response quality")

@@ -2,11 +2,13 @@
 # --proxy-llm Gemini judge (identical prompt to the official gpt-4o judge) for use only when
 # OPENAI_API_KEY is unavailable; the default --use-llm path (gpt-4o) is untouched. Also adds a
 # "judge" field to the report so PROXY output is never mistaken for the official judge's.
+# UPDATE: gemini-2.5-flash was deprecated server-side mid-session (404, "no longer available to
+# new users") — swapped to gemini-3.8-flash, verified working via a direct API call first.
 diff --git a/v3/evaluate_tool_calls.py b/v3/evaluate_tool_calls.py
-index 4dbc319..76095da 100644
+index 4dbc319..5cbb1a6 100644
 --- a/v3/evaluate_tool_calls.py
 +++ b/v3/evaluate_tool_calls.py
-@@ -44,6 +44,27 @@ except ImportError:
+@@ -44,6 +44,28 @@ except ImportError:
  # ==============================================================================
  
  _openai_client = None
@@ -18,7 +20,8 @@ index 4dbc319..76095da 100644
 +# Every report produced this way is labelled "judge": "gemini-2.5-flash (PROXY, not official)"
 +# so it is never mistaken for the organizers' own pinned-judge numbers.
 +JUDGE_BACKEND = "openai"   # set to "gemini_proxy" via --proxy-llm
-+GEMINI_PROXY_MODEL = "gemini-2.5-flash"
++GEMINI_PROXY_MODEL = "gemini-3.8-flash"  # gemini-2.5-flash returns 404 ("no longer available
++# to new users") as of this session — verified working via a direct API call before switching
 +
 +
 +def _get_gemini_client():
@@ -34,7 +37,7 @@ index 4dbc319..76095da 100644
  
  
  def _strip_json_fences(text: str) -> str:
-@@ -73,16 +94,10 @@ def _get_openai_client():
+@@ -73,16 +95,10 @@ def _get_openai_client():
      return _openai_client
  
  
@@ -55,7 +58,7 @@ index 4dbc319..76095da 100644
  
  Function: {function_name}
  Expected arguments: {json.dumps(expected_args)}
-@@ -99,6 +114,39 @@ Rules:
+@@ -99,6 +115,39 @@ Rules:
  Respond with ONLY a JSON object:
  {{"correct": true/false, "explanation": "brief reason"}}"""
  
@@ -95,7 +98,7 @@ index 4dbc319..76095da 100644
      try:
          resp = client.chat.completions.create(
              model="gpt-4o",
-@@ -113,19 +161,9 @@ Respond with ONLY a JSON object:
+@@ -113,19 +162,9 @@ Respond with ONLY a JSON object:
          return exact_match_args(expected_args, actual_args)
  
  
@@ -118,7 +121,7 @@ index 4dbc319..76095da 100644
  
  Expected Task/Action: "{expected_intent}"
  Actual Agent Spoken Response: "{actual_transcript}"
-@@ -141,6 +179,42 @@ Evaluation criteria:
+@@ -141,6 +180,42 @@ Evaluation criteria:
  Respond with ONLY a JSON object:
  {{"correct": true/false, "explanation": "brief reason"}}"""
  
@@ -161,7 +164,7 @@ index 4dbc319..76095da 100644
      try:
          resp = client.chat.completions.create(
              model="gpt-4o",
-@@ -488,6 +562,13 @@ def evaluate_all_v2(benchmark_data: dict, evaluation_entries: list, use_llm: boo
+@@ -488,6 +563,13 @@ def evaluate_all_v2(benchmark_data: dict, evaluation_entries: list, use_llm: boo
      report = {
          "benchmark_name":  benchmark_data["benchmark_name"],
          "evaluated_at":    datetime.now().isoformat(),
@@ -175,7 +178,7 @@ index 4dbc319..76095da 100644
          "total_scenarios": len(results),
          "turn_taking": {
              "total":           len(results),
-@@ -617,8 +698,16 @@ def main():
+@@ -617,8 +699,16 @@ def main():
      parser.add_argument("--dry-run",      action="store_true")
      parser.add_argument("--use-llm",      action="store_true",
                          help="Use gpt-4o as LLM judge for argument and response accuracy")
