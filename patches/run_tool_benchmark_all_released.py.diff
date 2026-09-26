@@ -1,0 +1,52 @@
+﻿# REASON: harness reliability only; no scoring logic changed. Adds --infer-only (skips loading
+# the ASR model and scoring, batch-level counterpart to run_tool_benchmark.py's same flag) so a
+# full run can do all agent inference first and all NeMo scoring afterward, never concurrently.
+diff --git a/v3/run_tool_benchmark_all_released.py b/v3/run_tool_benchmark_all_released.py
+index c9fef37..813f5f7 100644
+--- a/v3/run_tool_benchmark_all_released.py
++++ b/v3/run_tool_benchmark_all_released.py
+@@ -98,6 +98,9 @@ def main():
+                         help="Model provider (gpt_realtime, grok, gemini2_5, gemini3_1, ultravox, cascaded)")
+     parser.add_argument("--force", action="store_true", help="Overwrite existing results")
+     parser.add_argument("--asr-only", action="store_true", help="Skip inference, only run ASR")
++    parser.add_argument("--infer-only", action="store_true",
++                        help="Run inference only, skip ASR/scoring (pair with a later "
++                             "--asr-only pass — keeps NeMo off the CPU while the agent is live)")
+     args = parser.parse_args()
+ 
+     root_dir = Path(args.root_dir)
+@@ -116,10 +119,15 @@ def main():
+         data = {}
+     print(f"📋 Loaded {len(data)} scenarios from benchmark_data_v2.json")
+ 
+-    # 2. Load ASR Model once
+-    print(f"🔊 Loading ASR model...")
+-    asr_model = load_asr_model()
+-    print(f"✅ ASR model loaded")
++    # 2. Load ASR Model once (skipped entirely in --infer-only: NeMo never touches the CPU
++    # while the agent is live and accepting job dispatches — see process_single's own docstring)
++    if args.infer_only:
++        asr_model = None
++        print(f"🔊 Skipping ASR model load (--infer-only)")
++    else:
++        print(f"🔊 Loading ASR model...")
++        asr_model = load_asr_model()
++        print(f"✅ ASR model loaded")
+ 
+     # 3. Discover Inputs (also picks up per-folder metadata.json)
+     inputs = discover_inputs_released(root_dir)
+@@ -153,12 +161,12 @@ def main():
+             result = process_single(
+                 speaker_id, example_id, input_path,
+                 args.provider, data, asr_model,
+-                asr_only=args.asr_only, force=args.force
++                asr_only=args.asr_only, force=args.force, infer_only=args.infer_only
+             )
+ 
+             if result is None:
+                 stats["skipped"] += 1
+-            elif result.get("status") == "completed":
++            elif result.get("status") in ("completed", "awaiting_scoring"):
+                 stats["success"] += 1
+                 lat = result.get("latency", {}).get("first_speech_s")
+                 if lat:

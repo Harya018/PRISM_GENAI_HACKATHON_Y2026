@@ -1,0 +1,104 @@
+﻿# REASON: harness reliability only; no scoring logic changed. Raises the LiveKit worker's
+# load_threshold and lowers num_idle_processes (its prod default is cpu_count() warm processes,
+# too heavy for this CPU-only dev machine) — observed cause of "job executor is unresponsive"
+# and the agent going silently unavailable mid-run. Does not touch the agent's own tool-calling
+# or response behavior; this is the STOCK baseline template, used unmodified for the comparison
+# in every other respect.
+diff --git a/v3/lk_agent_tool.py b/v3/lk_agent_tool.py
+index 9788da4..bb06606 100644
+--- a/v3/lk_agent_tool.py
++++ b/v3/lk_agent_tool.py
+@@ -132,6 +132,23 @@ PROVIDER = os.getenv("LK_PROVIDER", "grok")
+ #   "gemini3_1"    – Google Gemini 3.1 Live API
+ #   "ultravox"     – Ultravox Realtime
+ 
++# Compatibility fix for current livekit-agents (1.8.x; repo pins ~=1.3 which allows it):
++# plugins now enforce "must be registered on the main thread" (Plugin.register_plugin, run as an
++# import-time side effect) and raise RuntimeError if that import is deferred into the per-job
++# async entrypoint, as the original lazy `from livekit.plugins import X` inside
++# get_realtime_model() did. Import the one plugin we need eagerly, at module load (main thread),
++# instead. Local compatibility patch only — does not touch benchmark logic or scoring.
++_provider_lc = PROVIDER.lower()
++_PLUGIN_MODULE = None
++if _provider_lc == "grok":
++    from livekit.plugins import xai as _PLUGIN_MODULE
++elif _provider_lc in ("gpt_realtime", "azure_openai"):
++    from livekit.plugins import openai as _PLUGIN_MODULE
++elif _provider_lc in ("gemini2_5", "gemini3_1"):
++    from livekit.plugins import google as _PLUGIN_MODULE
++elif _provider_lc == "ultravox":
++    from livekit.plugins import ultravox as _PLUGIN_MODULE
++
+ 
+ def get_realtime_model():
+     """Return a RealtimeModel instance based on the configured provider."""
+@@ -139,26 +156,20 @@ def get_realtime_model():
+ 
+     # ── xAI Grok Voice Agent API ──────────────────────────────────────
+     if provider == "grok":
+-        from livekit.plugins import xai
+-
+-        return xai.realtime.RealtimeModel(
++        return _PLUGIN_MODULE.realtime.RealtimeModel(
+             voice=os.getenv("XAI_VOICE", "Ara"),
+         )
+ 
+     # ── OpenAI Realtime API ──────────────────────────────────────────
+     elif provider == "gpt_realtime":
+-        from livekit.plugins import openai
+-
+-        return openai.realtime.RealtimeModel(
++        return _PLUGIN_MODULE.realtime.RealtimeModel(
+             model="gpt-realtime-1.5",
+             voice=os.getenv("OPENAI_VOICE", "coral"),
+         )
+ 
+     # ── Azure OpenAI Realtime API ─────────────────────────────────────
+     elif provider == "azure_openai":
+-        from livekit.plugins import openai
+-
+-        return openai.realtime.RealtimeModel.with_azure(
++        return _PLUGIN_MODULE.realtime.RealtimeModel.with_azure(
+             azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-realtime-preview"),
+             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+             api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
+@@ -168,27 +179,21 @@ def get_realtime_model():
+ 
+     # ── Google Gemini 2.5 Live API ───────────────────────────────────
+     elif provider == "gemini2_5":
+-        from livekit.plugins import google
+-
+-        return google.realtime.RealtimeModel(
++        return _PLUGIN_MODULE.realtime.RealtimeModel(
+             model="gemini-2.5-flash-native-audio-preview-12-2025",
+             voice=os.getenv("GOOGLE_VOICE", "Puck"),
+         )
+ 
+     # ── Google Gemini 3.1 Live API ───────────────────────────────────
+     elif provider == "gemini3_1":
+-        from livekit.plugins import google
+-
+-        return google.realtime.RealtimeModel(
++        return _PLUGIN_MODULE.realtime.RealtimeModel(
+             model="gemini-3.1-flash-live-preview",
+             voice=os.getenv("GOOGLE_VOICE", "Puck"),
+         )
+ 
+     # ── Ultravox Realtime ─────────────────────────────────────────────
+     elif provider == "ultravox":
+-        from livekit.plugins import ultravox
+-
+-        return ultravox.realtime.RealtimeModel(
++        return _PLUGIN_MODULE.realtime.RealtimeModel(
+             voice=os.getenv("ULTRAVOX_VOICE", "Mark"),
+         )
+ 
+@@ -393,7 +398,7 @@ class VoiceAgent(Agent):
+ # ---------------------------------------------------------------------------
+ # Agent server & session
+ # ---------------------------------------------------------------------------
+-server = AgentServer()
++server = AgentServer(load_threshold=0.95, num_idle_processes=1)
+ 
+ 
+ @server.rtc_session()

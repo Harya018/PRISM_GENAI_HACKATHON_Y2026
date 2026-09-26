@@ -1,0 +1,194 @@
+﻿# REASON: harness reliability/tooling only; no scoring logic changed. Adds an opt-in
+# --proxy-llm Gemini judge (identical prompt to the official gpt-4o judge) for use only when
+# OPENAI_API_KEY is unavailable; the default --use-llm path (gpt-4o) is untouched. Also adds a
+# "judge" field to the report so PROXY output is never mistaken for the official judge's.
+diff --git a/v3/evaluate_tool_calls.py b/v3/evaluate_tool_calls.py
+index 4dbc319..76095da 100644
+--- a/v3/evaluate_tool_calls.py
++++ b/v3/evaluate_tool_calls.py
+@@ -44,6 +44,27 @@ except ImportError:
+ # ==============================================================================
+ 
+ _openai_client = None
++_gemini_client = None
++
++# PROXY JUDGE: no OpenAI key is available in this environment. When --proxy-llm is passed,
++# argument/response judging uses Gemini instead of gpt-4o, with the EXACT SAME prompts as the
++# official gpt-4o judge below (llm_judge_argument/llm_judge_response) — only the model changes.
++# Every report produced this way is labelled "judge": "gemini-2.5-flash (PROXY, not official)"
++# so it is never mistaken for the organizers' own pinned-judge numbers.
++JUDGE_BACKEND = "openai"   # set to "gemini_proxy" via --proxy-llm
++GEMINI_PROXY_MODEL = "gemini-2.5-flash"
++
++
++def _get_gemini_client():
++    global _gemini_client
++    if _gemini_client is None:
++        try:
++            from google import genai
++            _gemini_client = genai.Client()
++        except Exception as e:
++            print(f"⚠️  Gemini proxy-judge client not available: {e}")
++            _gemini_client = None
++    return _gemini_client
+ 
+ 
+ def _strip_json_fences(text: str) -> str:
+@@ -73,16 +94,10 @@ def _get_openai_client():
+     return _openai_client
+ 
+ 
+-def llm_judge_argument(expected_args: dict, actual_args: dict, function_name: str) -> Tuple[bool, str]:
+-    """
+-    Use gpt-4o to judge if actual function arguments semantically match expected.
+-    Returns (is_correct: bool, explanation: str).
+-    """
+-    client = _get_openai_client()
+-    if client is None:
+-        return exact_match_args(expected_args, actual_args)
+-
+-    prompt = f"""You are evaluating whether an AI voice agent called a function with correct arguments.
++def _argument_judge_prompt(expected_args: dict, actual_args: dict, function_name: str) -> str:
++    """Shared verbatim between the official gpt-4o judge and the Gemini PROXY judge — only the
++    model receiving this prompt differs, never the rubric itself."""
++    return f"""You are evaluating whether an AI voice agent called a function with correct arguments.
+ 
+ Function: {function_name}
+ Expected arguments: {json.dumps(expected_args)}
+@@ -99,6 +114,39 @@ Rules:
+ Respond with ONLY a JSON object:
+ {{"correct": true/false, "explanation": "brief reason"}}"""
+ 
++
++def llm_judge_argument_gemini(expected_args: dict, actual_args: dict,
++                              function_name: str) -> Tuple[bool, str]:
++    """PROXY judge: identical prompt/rubric to llm_judge_argument, Gemini instead of gpt-4o —
++    see the JUDGE_BACKEND comment above for why, and always check the report's own "judge"
++    field before comparing these numbers to an official gpt-4o run."""
++    client = _get_gemini_client()
++    if client is None:
++        return exact_match_args(expected_args, actual_args)
++    prompt = _argument_judge_prompt(expected_args, actual_args, function_name)
++    try:
++        resp = client.models.generate_content(model=GEMINI_PROXY_MODEL, contents=prompt)
++        raw = _strip_json_fences(resp.text)
++        result = json.loads(raw)
++        return result["correct"], result["explanation"]
++    except Exception:
++        return exact_match_args(expected_args, actual_args)
++
++
++def llm_judge_argument(expected_args: dict, actual_args: dict, function_name: str) -> Tuple[bool, str]:
++    """
++    Use gpt-4o to judge if actual function arguments semantically match expected.
++    Returns (is_correct: bool, explanation: str).
++    """
++    if JUDGE_BACKEND == "gemini_proxy":
++        return llm_judge_argument_gemini(expected_args, actual_args, function_name)
++
++    client = _get_openai_client()
++    if client is None:
++        return exact_match_args(expected_args, actual_args)
++
++    prompt = _argument_judge_prompt(expected_args, actual_args, function_name)
++
+     try:
+         resp = client.chat.completions.create(
+             model="gpt-4o",
+@@ -113,19 +161,9 @@ Respond with ONLY a JSON object:
+         return exact_match_args(expected_args, actual_args)
+ 
+ 
+-def llm_judge_response(expected_intent: str, actual_transcript: str) -> Tuple[float, str]:
+-    """
+-    Use gpt-4o to judge if the agent's spoken response matches the expected intent.
+-    Returns (score: float 0.0 or 1.0, explanation: str).
+-    """
+-    if not actual_transcript or not actual_transcript.strip():
+-        return 0.0, "No transcript available."
+-
+-    client = _get_openai_client()
+-    if client is None:
+-        return 0.0, "OpenAI client unavailable."
+-
+-    prompt = f"""You are evaluating whether an AI voice agent successfully completed the user's requested task.
++def _response_judge_prompt(expected_intent: str, actual_transcript: str) -> str:
++    """Shared verbatim between the official gpt-4o judge and the Gemini PROXY judge."""
++    return f"""You are evaluating whether an AI voice agent successfully completed the user's requested task.
+ 
+ Expected Task/Action: "{expected_intent}"
+ Actual Agent Spoken Response: "{actual_transcript}"
+@@ -141,6 +179,42 @@ Evaluation criteria:
+ Respond with ONLY a JSON object:
+ {{"correct": true/false, "explanation": "brief reason"}}"""
+ 
++
++def llm_judge_response_gemini(expected_intent: str, actual_transcript: str) -> Tuple[float, str]:
++    """PROXY judge: identical prompt/rubric to llm_judge_response, Gemini instead of gpt-4o."""
++    if not actual_transcript or not actual_transcript.strip():
++        return 0.0, "No transcript available."
++    client = _get_gemini_client()
++    if client is None:
++        return 0.0, "Gemini proxy-judge client unavailable."
++    prompt = _response_judge_prompt(expected_intent, actual_transcript)
++    try:
++        resp = client.models.generate_content(model=GEMINI_PROXY_MODEL, contents=prompt)
++        raw = _strip_json_fences(resp.text)
++        result = json.loads(raw)
++        is_correct = result.get("correct", False)
++        return (1.0 if is_correct else 0.0), result.get("explanation", "")
++    except Exception as e:
++        return 0.0, f"LLM parsing error: {str(e)}"
++
++
++def llm_judge_response(expected_intent: str, actual_transcript: str) -> Tuple[float, str]:
++    """
++    Use gpt-4o to judge if the agent's spoken response matches the expected intent.
++    Returns (score: float 0.0 or 1.0, explanation: str).
++    """
++    if JUDGE_BACKEND == "gemini_proxy":
++        return llm_judge_response_gemini(expected_intent, actual_transcript)
++
++    if not actual_transcript or not actual_transcript.strip():
++        return 0.0, "No transcript available."
++
++    client = _get_openai_client()
++    if client is None:
++        return 0.0, "OpenAI client unavailable."
++
++    prompt = _response_judge_prompt(expected_intent, actual_transcript)
++
+     try:
+         resp = client.chat.completions.create(
+             model="gpt-4o",
+@@ -488,6 +562,13 @@ def evaluate_all_v2(benchmark_data: dict, evaluation_entries: list, use_llm: boo
+     report = {
+         "benchmark_name":  benchmark_data["benchmark_name"],
+         "evaluated_at":    datetime.now().isoformat(),
++        "judge": (
++            "none (exact-match only)" if not use_llm
++            else "gpt-4o (official)" if JUDGE_BACKEND != "gemini_proxy"
++            else f"{GEMINI_PROXY_MODEL} (PROXY — not the official judge, no OpenAI key "
++                 "available; same prompts as the gpt-4o judge, applied identically to both "
++                 "providers being compared)"
++        ),
+         "total_scenarios": len(results),
+         "turn_taking": {
+             "total":           len(results),
+@@ -617,8 +698,16 @@ def main():
+     parser.add_argument("--dry-run",      action="store_true")
+     parser.add_argument("--use-llm",      action="store_true",
+                         help="Use gpt-4o as LLM judge for argument and response accuracy")
++    parser.add_argument("--proxy-llm",    action="store_true",
++                        help="Use Gemini as a PROXY judge (same prompts as --use-llm's gpt-4o) "
++                             "when no OpenAI key is available. Implies --use-llm.")
+     args = parser.parse_args()
+ 
++    if args.proxy_llm:
++        global JUDGE_BACKEND
++        JUDGE_BACKEND = "gemini_proxy"
++        args.use_llm = True
++
+     if args.dry_run:
+         run_dry_run()
+         return

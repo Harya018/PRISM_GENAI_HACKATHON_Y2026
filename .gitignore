@@ -26,3 +26,7 @@ models/
 # Large/raw per-run artifacts — curated summaries (run_config.json, *_report.json, this file's
 # sibling logs under results/<mode>/<run_id>/) stay tracked; only truly raw dumps don't
 results/**/raw/
+
+# Local runtime artifacts (test-run process logs/pids) — not source
+extension/*.log
+extension/*.pid

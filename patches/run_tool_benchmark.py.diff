@@ -1,0 +1,156 @@
+﻿# REASON: harness reliability only; no scoring logic changed. (1) Adds a real subprocess
+# timeout to the per-example inference call — previously unbounded, so a dead/unresponsive
+# agent hung the whole batch forever with no way to recover. (2) Adds infer_only (skip ASR,
+# write status="awaiting_scoring") to support running all inference first and scoring
+# separately, so NeMo's CPU-heavy transcription never runs while the agent is live accepting
+# job dispatches (the two together are the fix for the reliability problem in (1)/lk_agent_tool
+# diff). (3) Fixes a genuine pre-existing bug in the ALREADY-SHIPPED --asr-only re-scoring mode:
+# room_name/stream_start_time (needed for tool-call telemetry) were never restored from a prior
+# result file, so any --asr-only re-run — with or without this session's two-phase split —
+# would have silently returned empty actual_tool_calls for every scenario.
+diff --git a/v3/run_tool_benchmark.py b/v3/run_tool_benchmark.py
+index 8a92b70..6ad235d 100755
+--- a/v3/run_tool_benchmark.py
++++ b/v3/run_tool_benchmark.py
+@@ -41,6 +41,11 @@ from pathlib import Path
+ from dotenv import load_dotenv
+ load_dotenv(".env.local")
+ 
++# Per-example wall-clock cap on the livekit_inference.py subprocess — see run_livekit_inference's
++# own comment. Generous relative to observed per-example durations (typically 20-60s) so it never
++# fires on a merely-slow example, only a genuinely stuck one.
++INFERENCE_TIMEOUT_S = int(os.getenv("INFERENCE_TIMEOUT_S", "180"))
++
+ class NpEncoder(json.JSONEncoder):
+     def default(self, obj):
+         import numpy as np
+@@ -130,7 +135,12 @@ def load_asr_model():
+     print("🔊 Loading ASR model...")
+     import nemo.collections.asr as nemo_asr
+     model = nemo_asr.models.ASRModel.from_pretrained(model_name=ASR_MODEL_NAME)
+-    if hasattr(model, 'cuda'):
++    # upstream bug: hasattr(model, 'cuda') is true for any PyTorch model regardless of whether
++    # CUDA is actually available, so this crashed unconditionally on a CPU-only machine
++    # (Full-Duplex-Bench RESEARCH_FDB.md ss3) -- local-only patch, harmless on the organizers'
++    # own GPU re-run machine where torch.cuda.is_available() is True anyway.
++    import torch
++    if torch.cuda.is_available():
+         model = model.cuda()
+     print("✅ ASR model loaded")
+     return model
+@@ -225,7 +235,11 @@ def run_livekit_inference(input_path, output_path, provider):
+     client_script = PROJECT_ROOT / "livekit_inference.py"
+     
+     try:
+-        # Run the client script as a subprocess
++        # Run the client script as a subprocess. timeout=INFERENCE_TIMEOUT_S is a reliability
++        # fix, not an agent-logic change: without it, an agent that dies or stops responding
++        # mid-session (observed once on this machine) blocks this call forever with nothing to
++        # recover from — the overnight orchestrator's auto-restart depends on this call actually
++        # returning so it can detect the failure and act on it.
+         result = subprocess.run(
+             [
+                 sys.executable, str(client_script),
+@@ -235,10 +249,11 @@ def run_livekit_inference(input_path, output_path, provider):
+             ],
+             capture_output=True,
+             text=True,
+-            check=True
++            check=True,
++            timeout=INFERENCE_TIMEOUT_S,
+         )
+         print(f"  ✅ livekit_inference.py finished successfully.")
+-        
++
+         # Parse STREAM_START_TIME
+         stream_start_time = None
+         for line in result.stdout.splitlines():
+@@ -248,8 +263,12 @@ def run_livekit_inference(input_path, output_path, provider):
+                 except:
+                     pass
+                 break
+-        
++
+         return room_name, stream_start_time
++    except subprocess.TimeoutExpired:
++        print(f"  ❌ livekit_inference.py timed out after {INFERENCE_TIMEOUT_S}s "
++             "(agent likely unresponsive)")
++        return None, None
+     except subprocess.CalledProcessError as e:
+         print(f"  ❌ livekit_inference.py failed with exit code {e.returncode}")
+         return None, None
+@@ -277,8 +296,17 @@ def verify_search_answer(item, transcript):
+ # ==============================================================================
+ 
+ def process_single(pid, example_id, input_path, provider, data, asr_model,
+-                   asr_only=False, force=False):
+-    """Process a single example through the full pipeline."""
++                   asr_only=False, force=False, infer_only=False):
++    """Process a single example through the full pipeline.
++
++    infer_only=True stops right after Step 1 (inference), writing a status="awaiting_scoring"
++    result instead of running ASR/scoring — so a full inference pass can complete for every
++    example with the agent process alone, and a separate --asr-only pass (loading the ASR model
++    once, agent process no longer needed) scores everything afterward. This keeps the CPU-heavy
++    NeMo transcription from ever running while the LiveKit agent worker is live and accepting
++    job dispatches, which on a single, no-GPU dev machine can spike load past the worker's
++    availability threshold mid-run (see docs/RESEARCH_FDB.md — a documented real failure mode,
++    not a hypothetical one)."""
+     item = data.get(example_id)
+     if item is None:
+         print(f"  ⚠️  Example {example_id} not found in data — skipping")
+@@ -289,10 +317,16 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
+     output_path = example_dir / f"output_{provider}.wav"
+     result_path = example_dir / f"result_{provider}.json"
+ 
+-    # Check if already evaluated
++    # Check if already evaluated — "awaiting_scoring" (an infer_only result) is not a terminal
++    # state, so a follow-up --asr-only pass may still proceed against it without --force.
+     if result_path.exists() and not force:
+-        print(f"  ⏭️  Already evaluated — skipping (use --force to re-run)")
+-        return None
++        try:
++            existing_status = json.loads(result_path.read_text(encoding="utf-8")).get("status")
++        except Exception:
++            existing_status = None
++        if existing_status != "awaiting_scoring":
++            print(f"  ⏭️  Already evaluated — skipping (use --force to re-run)")
++            return None
+ 
+     result = {
+         "pid": pid,
+@@ -303,6 +337,20 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
+         "evaluated_at": datetime.datetime.now().isoformat(),
+     }
+ 
++    # --asr-only resumes scoring for a result an earlier infer_only pass already produced —
++    # room_name/stream_start_time (needed below for tool-call telemetry and latency breakdown)
++    # only ever get set during Step 1's inference, so without this they'd silently come back
++    # empty in ANY --asr-only run, not just a two-phase one (a real, general bug in the
++    # pre-existing --asr-only re-scoring mode, not something specific to this pipeline change).
++    if asr_only and result_path.exists():
++        try:
++            prior = json.loads(result_path.read_text(encoding="utf-8"))
++            for k in ("room_name", "stream_start_time", "inference_time_s"):
++                if k in prior:
++                    result[k] = prior[k]
++        except Exception:
++            pass
++
+     # Step 1: Run inference (unless --asr-only)
+     if not asr_only:
+         if output_path.exists() and not force:
+@@ -331,6 +379,13 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
+                     json.dump(result, f, indent=2, ensure_ascii=False)
+                 return result
+ 
++        if infer_only:
++            result["status"] = "awaiting_scoring"
++            with open(result_path, "w") as f:
++                json.dump(result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
++            print(f"  💾 Saved (inference only): {result_path.name}")
++            return result
++
+     # Step 2: Check output exists
+     if not output_path.exists():
+         print(f"  ⚠️  No output file found: {output_path.name}")

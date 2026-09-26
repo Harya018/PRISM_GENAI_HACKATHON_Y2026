@@ -4,13 +4,17 @@
 #
 #   ./scripts/run_fdb_v3.sh              # our agent (default: LK_PROVIDER=gemini2_5)
 #   ./scripts/run_fdb_v3.sh --baseline   # the FDB-v3 stock template, unmodified — for comparison
+#   ./scripts/run_fdb_v3.sh --proxy-llm  # use the Gemini PROXY judge instead of gpt-4o (only if
+#                                        # OPENAI_API_KEY isn't available — never the default)
 #   LK_PROVIDER=gpt_realtime ./scripts/run_fdb_v3.sh
 #
 # Requires .env in the repo root (copy .env.example, fill in LIVEKIT_* + a provider key).
 # Target: Linux, single 48GB NVIDIA GPU, CUDA 12.x/13.x (the organizers' own re-run machine per
 # docs/Theme05_Participant_Guide_UPDATED_FBD.docx) or a declared hosted API — the agent itself
 # needs no local GPU (realtime models are hosted APIs); only the benchmark's own NeMo ASR
-# verification step benefits from one (falls back to CPU otherwise, just slower).
+# verification step benefits from one (falls back to CPU otherwise, just slower). Runs inference
+# for every scenario first, then scores afterward (never concurrently) — harmless on a GPU
+# machine, and the only reliable way to run this on a CPU-only one (patches/README.md).
 set -euo pipefail
 
 REPRO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,12 +22,14 @@ FDB_COMMIT="3e799c45a045256f47d5f1c9cda90157e2d2ec9e"   # pinned — docs/RESEAR
 FDB_DATA_GDRIVE_ID="1SO_4MTazWQ_jvCx0dtmpQ-t40bdd07yz"
 PROVIDER="${LK_PROVIDER:-gemini2_5}"
 MODE="ours"
+JUDGE_FLAG="--use-llm"       # official gpt-4o judge — the default, always, unless --proxy-llm
 SEED=1234
 
 for arg in "$@"; do
   case "$arg" in
     --baseline) MODE="baseline" ;;
     --provider=*) PROVIDER="${arg#*=}" ;;
+    --proxy-llm) JUDGE_FLAG="--proxy-llm" ;;   # opt-in only — see patches/README.md
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
@@ -42,7 +48,7 @@ set -a; source "${REPRO_ROOT}/.env"; set +a
 export PYTHONHASHSEED="${SEED}"
 export LK_PROVIDER="${PROVIDER}"
 
-echo "== [1/6] Clone FDB-v3 (pinned commit ${FDB_COMMIT}) =="
+echo "== [1/7] Clone FDB-v3 (pinned commit ${FDB_COMMIT}) =="
 FDB_DIR="${REPRO_ROOT}/.fdb-v3"
 if [ ! -d "${FDB_DIR}" ]; then
   git clone https://github.com/DanielLin94144/Full-Duplex-Bench.git "${FDB_DIR}"
@@ -51,7 +57,10 @@ git -C "${FDB_DIR}" fetch --depth=1 origin "${FDB_COMMIT}" 2>/dev/null || true
 git -C "${FDB_DIR}" checkout "${FDB_COMMIT}"
 echo "$(git -C "${FDB_DIR}" rev-parse HEAD)" > "${RESULTS_DIR}/fdb_commit.txt"
 
-echo "== [2/6] Python env + dependencies =="
+echo "== [2/7] Apply harness reliability patches (patches/README.md — no scoring logic touched) =="
+python3 "${REPRO_ROOT}/scripts/patch_fdb_v3.py" "${FDB_DIR}"
+
+echo "== [3/7] Python env + dependencies =="
 VENV="${REPRO_ROOT}/.venv"
 if [ ! -d "${VENV}" ]; then
   python3 -m venv "${VENV}"
@@ -61,19 +70,20 @@ pip install --quiet --upgrade pip
 pip install --quiet -r "${REPRO_ROOT}/requirements.txt"
 pip freeze > "${RESULTS_DIR}/pip_freeze.txt"
 
-echo "== [3/6] Benchmark data =="
+echo "== [4/7] Benchmark data =="
 DATA_DIR="${FDB_DIR}/v3/fdb_v3_data_released"
 if [ ! -d "${DATA_DIR}" ]; then
   python3 -c "import gdown; gdown.download(id='${FDB_DATA_GDRIVE_ID}', output='${FDB_DIR}/v3/fdb_v3_data_released.zip', quiet=False)"
   python3 -c "import zipfile; zipfile.ZipFile('${FDB_DIR}/v3/fdb_v3_data_released.zip').extractall('${FDB_DIR}/v3')"
 fi
 
-echo "== [4/6] Start the agent =="
+echo "== [5/7] Start the agent =="
 if [ "${MODE}" = "baseline" ]; then
   AGENT_SCRIPT="lk_agent_tool.py"          # FDB-v3's own stock template, unmodified
 else
   cp "${REPRO_ROOT}/agent/lk_agent.py" "${FDB_DIR}/v3/lk_agent_ours.py"
-  cp "${REPRO_ROOT}/agent/guard.py" "${FDB_DIR}/v3/guard.py"
+  cp "${REPRO_ROOT}/agent/commit_gate.py" "${FDB_DIR}/v3/commit_gate.py"
+  cp "${REPRO_ROOT}/agent/resolver.py" "${FDB_DIR}/v3/resolver.py"
   cp "${REPRO_ROOT}/agent/instructions.py" "${FDB_DIR}/v3/instructions.py"
   AGENT_SCRIPT="lk_agent_ours.py"
 fi
@@ -86,20 +96,25 @@ trap 'kill "${AGENT_PID}" 2>/dev/null || true' EXIT
 echo "Agent server started (pid ${AGENT_PID}), waiting for LiveKit Cloud registration..."
 sleep 10
 
-echo "== [5/6] Run inference against all 100 scenarios =="
-python3 run_tool_benchmark_all_released.py --provider "${PROVIDER}" --force \
+echo "== [6/7] Run inference against all 100 scenarios (--infer-only: scoring happens after " \
+     "the agent stops, never concurrently — patches/README.md) =="
+python3 run_tool_benchmark_all_released.py --provider "${PROVIDER}" --infer-only --force \
   2>&1 | tee "${RESULTS_DIR}/inference.log"
 
 kill "${AGENT_PID}" 2>/dev/null || true
 trap - EXIT
 
-echo "== [6/6] Evaluate (LLM judge enabled — matches the official pinned-judge policy) =="
+echo "== [6b/7] Score (NeMo ASR — no agent needed for this step) =="
+python3 run_tool_benchmark_all_released.py --provider "${PROVIDER}" --asr-only \
+  2>&1 | tee "${RESULTS_DIR}/scoring.log"
+
+echo "== [7/7] Evaluate (${JUDGE_FLAG#--} judge) =="
 python3 evaluate_tool_calls.py --benchmark benchmark_data_v2.json \
   --results-dir fdb_v3_data_released --provider "${PROVIDER}" \
-  --output "${RESULTS_DIR}/${PROVIDER}_evaluation_report.json" --use-llm
+  --output "${RESULTS_DIR}/${PROVIDER}_evaluation_report.json" "${JUDGE_FLAG}"
 python3 evaluate_pass_rate.py --benchmark benchmark_data_v2.json \
   --results-dir fdb_v3_data_released --provider "${PROVIDER}" \
-  --output "${RESULTS_DIR}/${PROVIDER}_pass_rate_report.json" --use-llm
+  --output "${RESULTS_DIR}/${PROVIDER}_pass_rate_report.json" "${JUDGE_FLAG}"
 python3 analyze_tool_latency.py --results-dir fdb_v3_data_released --provider "${PROVIDER}" \
   | tee "${RESULTS_DIR}/${PROVIDER}_latency_report.txt"
 popd > /dev/null
@@ -108,6 +123,7 @@ cat > "${RESULTS_DIR}/run_config.json" <<EOF
 {
   "mode": "${MODE}",
   "provider": "${PROVIDER}",
+  "judge": "${JUDGE_FLAG}",
   "fdb_commit": "${FDB_COMMIT}",
   "seed": ${SEED},
   "run_id": "${RUN_ID}"
