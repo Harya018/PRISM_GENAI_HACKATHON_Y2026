@@ -1,0 +1,28 @@
+# Secrets — never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Environments
+.venv/
+venv/
+
+# The benchmark repo and its data are cloned fresh by scripts/run_fdb_v3.sh (pinned commit in
+# RESEARCH_FDB.md) — not vendored into this repo.
+.fdb-v3/
+fdb_v3_data_released/
+
+# Model weights/caches (NeMo ASR, any local checkpoints)
+.cache/
+models/
+*.nemo
+*.ckpt
+*.pt
+
+# Large/raw per-run artifacts — curated summaries (run_config.json, *_report.json, this file's
+# sibling logs under results/<mode>/<run_id>/) stay tracked; only truly raw dumps don't
+results/**/raw/

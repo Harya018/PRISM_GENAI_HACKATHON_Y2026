@@ -1,0 +1,16 @@
+# Pinned to what was actually verified working in this dev environment (RESEARCH_FDB.md ss3).
+# FDB-v3 itself (Full-Duplex-Bench/v3/README.md) recommends conda + python 3.10; verified here
+# against python 3.12 in a plain venv — both are within the theme's supported 3.10-3.12 range.
+
+livekit-agents[openai,google,xai]~=1.3
+livekit-plugins-ultravox
+livekit-plugins-silero
+livekit-plugins-openai
+livekit~=1.0
+numpy
+python-dotenv
+pydub
+ffmpeg-python
+openai
+gdown
+nemo_toolkit[asr]
