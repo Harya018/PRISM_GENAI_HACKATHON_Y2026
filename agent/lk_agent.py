@@ -269,14 +269,11 @@ class VoiceAgent(Agent):
 server = AgentServer(load_threshold=0.95, num_idle_processes=1)
 
 
-@server.rtc_session()
-# TODO (tracked, do not apply mid-run): switch to agent_name="fdb-ours" for explicit dispatch,
-# matching lk_agent_tool.py's fdb-baseline — held back deliberately because a full-100 "ours"
-# run is using anonymous dispatch as this comment is written; flipping the agent's dispatch
-# mode while that run's already-spawned room-creation subprocess still creates anonymous rooms
-# would silently strand it. Apply once that run finishes, together with the matching
-# --agent-name fdb-ours in overnight_runner.py's _agents() (currently None for "ours" with the
-# same reasoning).
+@server.rtc_session(agent_name="fdb-ours")
+# Explicit dispatch, applied now that the anonymous-dispatch full-100 "ours" run has finished
+# (100/100 infer + 100/100 score, zero agent restarts since 22:05:10 — one consistent code
+# version for the whole run). Matches lk_agent_tool.py's fdb-baseline; a room can now only ever
+# be routed to the worker it was explicitly created for.
 async def entrypoint(ctx: agents.JobContext):
     with open("/tmp/agent_heartbeat.log", "a") as f:
         f.write(f"!!! [ours] AGENT JOINING ROOM: {ctx.room.name} at {time.ctime()} !!!\n")
