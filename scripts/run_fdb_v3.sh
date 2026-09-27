@@ -118,8 +118,18 @@ python3 evaluate_tool_calls.py --benchmark benchmark_data_v2.json \
 python3 evaluate_pass_rate.py --benchmark benchmark_data_v2.json \
   --results-dir fdb_v3_data_released --provider "${PROVIDER}" \
   --output "${RESULTS_DIR}/${PROVIDER}_pass_rate_report.json" "${JUDGE_FLAG}"
-python3 analyze_tool_latency.py --results-dir fdb_v3_data_released --provider "${PROVIDER}" \
-  | tee "${RESULTS_DIR}/${PROVIDER}_latency_report.txt"
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  python3 analyze_tool_latency.py --results-dir fdb_v3_data_released --provider "${PROVIDER}" \
+    | tee "${RESULTS_DIR}/${PROVIDER}_latency_report.txt"
+else
+  # analyze_tool_latency.py (stock FDB-v3, unpatched) unconditionally instantiates an OpenAI
+  # client and crashes without a key, regardless of --proxy-llm -- found via a fresh-clone Docker
+  # reproduction test. It's a supplementary latency breakdown only; evaluate_tool_calls.py's own
+  # report above already includes avg/min/max latency and interruption rate, so skipping this is
+  # a graceful degradation, not a loss of the actual evaluation.
+  echo "Skipping analyze_tool_latency.py: needs OPENAI_API_KEY unconditionally (see" \
+       "patches/README.md); latency is already reported above by evaluate_tool_calls.py."
+fi
 popd > /dev/null
 
 cat > "${RESULTS_DIR}/run_config.json" <<EOF
