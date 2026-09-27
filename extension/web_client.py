@@ -138,12 +138,50 @@ def mint_token() -> dict:
 
 
 DASHBOARD_PATH = Path(__file__).resolve().parent / "dashboard.html"
+DASHBOARD_DATA_PATH = Path(__file__).resolve().parent.parent / "docs" / "dashboard_data.json"
+REPLAYS_DIR = Path(__file__).resolve().parent / "replays"
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
-        if path == "/":
+        if path == "/api/results":
+            # Read-only: serves the precomputed docs/dashboard_data.json (built by
+            # scripts/build_dashboard_data.py from real result/eval files). Never triggers any
+            # computation or benchmark run itself -- if the file is missing, says so plainly.
+            if DASHBOARD_DATA_PATH.exists():
+                body = DASHBOARD_DATA_PATH.read_bytes()
+                self.send_response(200)
+            else:
+                body = json.dumps({"error": "docs/dashboard_data.json not found -- run "
+                                            "scripts/build_dashboard_data.py first"}).encode("utf-8")
+                self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif path == "/api/replays":
+            names = sorted(p.name for p in REPLAYS_DIR.glob("*.jsonl")) if REPLAYS_DIR.exists() else []
+            body = json.dumps(names).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif path.startswith("/api/replays/"):
+            name = path[len("/api/replays/"):]
+            rf = REPLAYS_DIR / name
+            if ".." in name or not rf.exists():
+                self.send_response(404)
+                self.end_headers()
+                return
+            body = rf.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif path == "/":
             body = DASHBOARD_PATH.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -166,6 +204,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        if path == "/api/replays/save":
+            # Saves a client-recorded session (every data-channel event it received, with
+            # relative timestamps) as JSONL for later replay — never triggers or affects any
+            # LiveKit session; the recording itself happens entirely in the browser.
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            try:
+                payload = json.loads(body)
+                events = payload.get("events", [])
+                name = payload.get("name") or f"session_{secrets.token_hex(3)}"
+                name = "".join(c for c in name if c.isalnum() or c in "-_") + ".jsonl"
+                REPLAYS_DIR.mkdir(parents=True, exist_ok=True)
+                with open(REPLAYS_DIR / name, "w", encoding="utf-8") as f:
+                    for ev in events:
+                        f.write(json.dumps(ev) + "\n")
+                resp = json.dumps({"saved": name, "count": len(events)}).encode("utf-8")
+                self.send_response(200)
+            except Exception as e:
+                resp = json.dumps({"error": str(e)}).encode("utf-8")
+                self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
         else:
             self.send_response(404)
             self.end_headers()

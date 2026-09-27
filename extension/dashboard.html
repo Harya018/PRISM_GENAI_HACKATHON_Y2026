@@ -3,156 +3,199 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SentinelEdge Live — Device Support Agent</title>
+<title>SentinelEdge — Interruptible Device Support Agent</title>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <style>
   :root {
-    --navy-0: #05070f;
-    --navy-1: #0a0f24;
-    --navy-2: #10173a;
-    --navy-3: #1a2350;
-    --samsung-blue: #1428A0;
-    --samsung-blue-bright: #3b5bff;
-    --amber: #f5a623;
-    --red: #ef4444;
-    --green: #22c55e;
-    --grey: #6b7280;
-    --text: #e8ebf7;
-    --text-dim: #8b93b8;
+    --bg: #070B1A;
+    --panel: #0E1430;
+    --panel-grad: #111A3D;
+    --border: #1E2A5A;
+    --blue: #1428A0;
+    --blue-glow: #3D5AFE;
+    --text: #E8ECFF;
+    --muted: #8A93B8;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #38BDF8;
   }
   * { box-sizing: border-box; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
   body {
-    margin: 0; background: var(--navy-0); color: var(--text);
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    min-height: 100vh; display: flex; flex-direction: column;
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', Inter, system-ui, -apple-system, sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column; font-size: 14px;
   }
+  .tabular { font-variant-numeric: tabular-nums; }
+
   header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 24px; background: linear-gradient(90deg, var(--navy-1), var(--navy-2));
-    border-bottom: 1px solid var(--navy-3);
+    display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+    background: linear-gradient(90deg, var(--panel), var(--panel-grad));
+    border-bottom: 1px solid var(--border); flex-wrap: wrap;
   }
-  header h1 {
-    font-size: 18px; margin: 0; font-weight: 600; letter-spacing: 0.3px;
-    display: flex; align-items: center; gap: 10px;
-  }
-  header h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--samsung-blue-bright);
-    box-shadow: 0 0 8px var(--samsung-blue-bright); }
-  .tabs { display: flex; gap: 4px; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 600; white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; margin-left: 8px; }
   .tab-btn {
-    background: transparent; border: 1px solid var(--navy-3); color: var(--text-dim);
-    padding: 6px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px;
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    padding: 7px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500;
   }
-  .tab-btn.active { background: var(--navy-2); color: var(--text); border-bottom-color: var(--navy-2); }
-  #latencyBadge {
-    background: var(--navy-3); border: 1px solid var(--samsung-blue-bright); border-radius: 20px;
-    padding: 6px 14px; font-size: 13px; font-variant-numeric: tabular-nums;
+  .tab-btn.active { background: var(--blue-glow); color: #fff; border-color: var(--blue-glow); }
+  .spacer { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px;
+    font-size: 12px; border: 1px solid var(--border); background: var(--panel);
   }
-  #latencyBadge .val { color: var(--samsung-blue-bright); font-weight: 700; }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .pill.live .dot { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .pill.replay .dot { background: var(--info); box-shadow: 0 0 6px var(--info); }
+  #latencyBadge { font-size: 12px; }
+  #latencyBadge b { color: var(--blue-glow); }
 
   main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  .view { display: none; flex: 1; min-height: 0; }
+  .view { display: none; flex: 1; min-height: 0; overflow: hidden; }
   .view.active { display: flex; }
 
-  .col { padding: 16px; overflow-y: auto; }
-  .col h2 {
-    font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);
-    margin: 0 0 12px 0;
+  /* ---------- Live tab ---------- */
+  #view-live { }
+  .col { padding: 14px; overflow-y: auto; }
+  .col h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 10px 0; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 16px 20px; margin-bottom: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.25);
   }
-  .panel {
-    background: var(--navy-1); border: 1px solid var(--navy-3); border-radius: 10px;
-    padding: 14px; margin-bottom: 14px;
-  }
+  .left-col { width: 25%; min-width: 220px; border-right: 1px solid var(--border); flex-shrink: 0; }
+  .right-col { width: 25%; min-width: 220px; border-left: 1px solid var(--border); flex-shrink: 0; }
+  .center-col { width: 50%; flex: 1; display: flex; flex-direction: column; padding: 14px; min-width: 0; }
 
-  /* Left: camera + captions */
-  .left-col { width: 300px; flex-shrink: 0; border-right: 1px solid var(--navy-3); }
-  #localVideo { width: 100%; border-radius: 8px; background: #000; display: block; }
-  #joinBtn {
-    width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; border: none;
-    background: var(--samsung-blue-bright); color: #fff; font-weight: 600; cursor: pointer; font-size: 14px;
+  #localVideo { width: 100%; border-radius: 12px; background: #000; display: block; aspect-ratio: 4/3; object-fit: cover; }
+  .btn {
+    width: 100%; margin-top: 10px; padding: 10px; border-radius: 10px; border: none;
+    background: var(--blue-glow); color: #fff; font-weight: 600; cursor: pointer; font-size: 13px;
   }
-  #joinBtn:disabled { background: var(--navy-3); color: var(--text-dim); cursor: default; }
-  #connStatus { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
-  #captions { font-size: 13px; line-height: 1.5; min-height: 60px; color: var(--text); }
-  #captions .interim { color: var(--text-dim); font-style: italic; }
+  .btn.secondary { background: var(--panel-grad); border: 1px solid var(--border); color: var(--text); }
+  .btn:disabled { background: var(--border); color: var(--muted); cursor: default; }
+  select { width: 100%; margin-top: 6px; padding: 8px; border-radius: 8px; background: var(--panel-grad);
+    color: var(--text); border: 1px solid var(--border); font-size: 12px; }
+  #connStatus { font-size: 12px; color: var(--muted); margin-top: 8px; }
 
-  /* Center: pipeline */
-  .center-col { flex: 1; display: flex; flex-direction: column; padding: 20px; min-width: 0; }
-  .pipeline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;
-    margin-bottom: 24px; }
+  .agent-avatar { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .avatar-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--blue-glow); position: relative; }
+  .avatar-dot.speaking::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--blue-glow);
+    animation: pulse-ring 1.1s ease-out infinite;
+  }
+  @keyframes pulse-ring { 0% { opacity: 0.9; transform: scale(0.8); } 100% { opacity: 0; transform: scale(1.6); } }
+
+  #captions { font-size: 13px; line-height: 1.7; max-height: 260px; overflow-y: auto; }
+  #captions .row { margin-bottom: 6px; }
+  #captions .who { font-weight: 600; font-size: 11px; text-transform: uppercase; margin-right: 6px; }
+  #captions .who.user { color: var(--info); }
+  #captions .who.agent { color: var(--blue-glow); }
+  #captions .empty { color: var(--muted); font-style: italic; }
+
+  .pipeline { display: flex; align-items: stretch; gap: 4px; flex-wrap: nowrap; margin-bottom: 16px; overflow-x: auto; }
   .stage {
-    background: var(--navy-2); border: 2px solid var(--navy-3); border-radius: 10px;
-    padding: 14px 16px; min-width: 100px; text-align: center; transition: all 0.25s ease;
+    background: var(--panel); border: 2px solid var(--border); border-radius: 10px;
+    padding: 8px 9px; flex: 1; min-width: 0; text-align: center; transition: all 0.2s ease;
   }
-  .stage .name { font-size: 12px; font-weight: 600; }
-  .stage .ms { font-size: 11px; color: var(--text-dim); margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .stage.lit { border-color: var(--samsung-blue-bright); background: var(--navy-3);
-    box-shadow: 0 0 16px rgba(59, 91, 255, 0.45); }
-  .stage.lit .ms { color: var(--samsung-blue-bright); font-weight: 700; }
-  .arrow { color: var(--navy-3); font-size: 18px; }
+  .stage .name { font-size: 10.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage .detail { font-size: 9.5px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 12px; }
+  .stage .ms { font-size: 9.5px; color: var(--muted); margin-top: 2px; }
+  .stage.idle { opacity: 0.55; }
+  .stage.active { border-color: var(--info); box-shadow: 0 0 12px rgba(56,189,248,0.4); }
+  .stage.done { border-color: var(--success); }
+  .stage.done .ms { color: var(--success); font-weight: 700; }
+  .stage.blocked { border-color: var(--danger); box-shadow: 0 0 12px rgba(239,68,68,0.35); }
+  .arrow { color: var(--border); font-size: 14px; align-self: center; flex-shrink: 0; }
+  .arrow.pulse { color: var(--blue-glow); animation: arrow-pulse 0.6s ease; }
+  @keyframes arrow-pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
 
   .timeline-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .timeline {
-    flex: 1; overflow-y: auto; background: var(--navy-1); border: 1px solid var(--navy-3);
-    border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.9;
-  }
-  .timeline .turn { margin-bottom: 10px; }
-  .timeline .turn .filler { color: var(--grey); }
-  .timeline .strike { color: var(--red); text-decoration: line-through; opacity: 0.7; }
-  .timeline .corrected-to { color: var(--green); font-weight: 600; }
-  .timeline .meta { color: var(--text-dim); font-size: 11px; }
+  .timeline { flex: 1; overflow-y: auto; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 16px; font-size: 13px; line-height: 1.9; }
+  .timeline .turn { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed var(--border); }
+  .timeline .turn:last-child { border-bottom: none; }
+  .timeline .filler { color: var(--muted); }
+  .timeline .strike { color: var(--danger); text-decoration: line-through; opacity: 0.75; }
+  .timeline .corrected-to { color: var(--success); font-weight: 600; }
+  .timeline .meta { color: var(--muted); font-size: 11px; }
+  .timeline .chip { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; margin-left: 6px; background: var(--panel-grad); border: 1px solid var(--border); }
+  .empty-howitworks { color: var(--muted); font-size: 13px; }
+  .empty-howitworks ul { margin: 8px 0 0 18px; padding: 0; }
+  .empty-howitworks li { margin-bottom: 6px; }
 
-  /* Right: state + commit gate */
-  .right-col { width: 300px; flex-shrink: 0; border-left: 1px solid var(--navy-3); }
-  .gate-item {
-    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
-    background: var(--navy-2); margin-bottom: 6px; font-size: 12px;
-  }
-  .gate-item .badge {
-    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  }
-  .badge.pending { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
-  .badge.blocked { background: var(--red); box-shadow: 0 0 6px var(--red); }
-  .badge.executed { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .gate-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px;
+    background: var(--panel-grad); margin-bottom: 6px; font-size: 12px; }
+  .badge { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .badge.pending { background: var(--warning); box-shadow: 0 0 6px var(--warning); }
+  .badge.blocked { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+  .badge.executed { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .badge.info { background: var(--info); box-shadow: 0 0 6px var(--info); }
   .gate-item .tool { font-weight: 600; flex: 1; }
-  .gate-item .reason { color: var(--text-dim); font-size: 11px; }
-  .stat-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; color: var(--text-dim); }
-  .stat-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .gate-item .reason { color: var(--muted); font-size: 11px; }
+  .stat-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 5px 0; color: var(--muted); }
+  .stat-row b { color: var(--text); }
+  .slot-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 6px; border-radius: 6px; }
+  .slot-row.flash { background: rgba(61,90,254,0.25); }
 
-  footer {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 24px; background: var(--navy-1); border-top: 1px solid var(--navy-3);
-    font-size: 12px; color: var(--text-dim);
-  }
-  #dupCounter { color: var(--green); font-weight: 700; }
-  #dupCounter.has-dups { color: var(--red); }
+  /* ---------- Results tab ---------- */
+  #view-results { flex-direction: column; padding: 22px 26px; overflow-y: auto; gap: 18px; }
+  .methodology { font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; }
+  .headline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .metric-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; position: relative; }
+  .metric-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .metric-card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+  .metric-card .tooltip { display: none; position: absolute; bottom: 100%; left: 0; background: #000; color: #fff;
+    font-size: 11px; padding: 6px 10px; border-radius: 6px; width: 220px; z-index: 5; margin-bottom: 6px; }
+  .metric-card:hover .tooltip { display: block; }
 
-  /* Results tab */
-  .results-view { flex-direction: column; padding: 24px; overflow-y: auto; gap: 20px; }
-  .results-view .warn {
-    background: rgba(239, 68, 68, 0.12); border: 1px solid var(--red); border-radius: 8px;
-    padding: 12px 16px; font-size: 13px; color: #fca5a5;
-  }
-  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
-  .chart-card { background: var(--navy-1); border: 1px solid var(--navy-3); border-radius: 10px; padding: 16px; }
-  .chart-card h3 { font-size: 13px; margin: 0 0 12px 0; color: var(--text-dim); font-weight: 600; }
-  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
-  .bar-row .label { width: 70px; flex-shrink: 0; color: var(--text-dim); }
-  .bar-track { flex: 1; height: 16px; background: var(--navy-2); border-radius: 4px; overflow: hidden; }
+  .section-title { font-size: 15px; font-weight: 600; margin: 6px 0 2px 0; }
+  .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; }
+  .bar-group { margin-bottom: 14px; }
+  .bar-group .glabel { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .bar-group .glabel .delta.pos { color: var(--success); }
+  .bar-group .glabel .delta.neg { color: var(--danger); }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11.5px; }
+  .bar-row .rlabel { width: 62px; flex-shrink: 0; color: var(--muted); }
+  .bar-track { flex: 1; height: 14px; background: var(--panel-grad); border-radius: 4px; overflow: hidden; }
   .bar-fill { height: 100%; border-radius: 4px; }
-  .bar-fill.ours { background: var(--samsung-blue-bright); }
-  .bar-fill.baseline { background: var(--grey); }
-  .bar-row .val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar-fill.ours { background: var(--blue-glow); }
+  .bar-fill.baseline { background: var(--muted); }
+  .bar-row .rval { width: 90px; text-align: right; }
+  .rval.nodata { color: var(--muted); font-style: italic; font-size: 10.5px; }
+
+  .breakdown-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .limitations { font-size: 12.5px; color: var(--muted); background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; }
+  .limitations ul { margin: 6px 0 0 18px; padding: 0; }
+  .limitations li { margin-bottom: 5px; }
+
+  footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 22px;
+    background: var(--panel); border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  #dupCounter { color: var(--success); font-weight: 700; }
+  #dupCounter.has-dups { color: var(--danger); }
+
+  @media (max-width: 1366px) {
+    .stage .name { font-size: 9.5px; }
+    .stage .detail, .stage .ms { font-size: 8.5px; }
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <h1><span class="dot"></span> SentinelEdge — Device Support Agent</h1>
+  <h1>SentinelEdge</h1>
   <div class="tabs">
     <button class="tab-btn active" data-view="live">Live</button>
     <button class="tab-btn" data-view="results">Results</button>
+    <button class="tab-btn" data-view="explorer">Benchmark Explorer</button>
+    <button class="tab-btn" data-view="architecture">Architecture</button>
   </div>
-  <div id="latencyBadge">turn latency: <span class="val" id="latencyVal">—</span></div>
+  <div class="spacer"></div>
+  <div class="pill" id="connPill"><span class="dot"></span><span id="connLabel">Idle</span></div>
+  <div class="pill" id="latencyBadge">turn latency: <b class="tabular" id="latencyVal">—</b></div>
 </header>
 
 <main>
@@ -160,102 +203,191 @@
     <div class="col left-col">
       <h2>Camera</h2>
       <video id="localVideo" autoplay muted playsinline></video>
-      <button id="joinBtn">Join with mic + camera</button>
+      <button class="btn" id="joinBtn">Join with mic + camera</button>
+      <select id="replaySelect"><option value="">Replay: none available</option></select>
+      <button class="btn secondary" id="replayBtn" disabled>▶ Play replay</button>
+      <button class="btn secondary" id="recordBtn" disabled>⏺ Record this session</button>
       <div id="connStatus">Not connected</div>
-      <h2 style="margin-top:18px;">Captions</h2>
-      <div class="panel"><div id="captions">—</div></div>
+
+      <h2 style="margin-top:16px;">Conversation</h2>
+      <div class="card">
+        <div class="agent-avatar"><span class="avatar-dot" id="avatarDot"></span><span style="font-size:12px;color:var(--muted);">agent</span></div>
+        <div id="captions"><div class="empty">Waiting for you to speak…</div></div>
+      </div>
     </div>
 
     <div class="center-col">
       <div class="pipeline" id="pipeline"></div>
       <div class="timeline-wrap">
-        <h2>Correction timeline</h2>
-        <div class="timeline" id="timeline"></div>
+        <h2 style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 8px 0;">Correction timeline</h2>
+        <div class="timeline" id="timeline">
+          <div class="empty-howitworks">
+            <b>How it works</b>
+            <ul>
+              <li>Talk to the agent — try correcting yourself mid-sentence (e.g. "Bluetooth — no, Wi-Fi").</li>
+              <li>The commit gate buffers each proposed tool call briefly so a correction can supersede it before it ever runs.</li>
+              <li>Corrected-away values show struck through here; the resolved value shows in green.</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="col right-col">
-      <h2>State</h2>
-      <div class="panel" id="statePanel">
+      <h2>Session state</h2>
+      <div class="card" id="statePanel">
         <div class="stat-row">Turns <b id="statTurns">0</b></div>
         <div class="stat-row">Tool calls executed <b id="statExecuted">0</b></div>
         <div class="stat-row">Corrections caught <b id="statCorrections">0</b></div>
-        <div class="stat-row">Blocked duplicates <b id="statBlocked">0</b></div>
+        <div class="stat-row">Duplicates blocked <b id="statBlocked">0</b></div>
+        <div class="stat-row">Confirmations requested <b id="statConfirm">0</b></div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Last action</div>
+          <div id="lastAction" style="font-size:12.5px;color:var(--muted);">none yet</div>
+        </div>
       </div>
       <h2>Commit gate</h2>
-      <div class="panel" id="gatePanel" style="max-height: 340px; overflow-y: auto;">
-        <div style="color: var(--text-dim); font-size: 12px;">No activity yet.</div>
+      <div class="card" id="gatePanel" style="max-height: 320px; overflow-y: auto;">
+        <div style="color: var(--muted); font-size: 12px;">No activity yet — decisions will appear here as they happen.</div>
       </div>
     </div>
   </div>
 
-  <div class="view results-view" id="view-results">
-    <div class="warn" id="resultsWarn"></div>
-    <div class="chart-grid" id="chartGrid"></div>
+  <div class="view" id="view-results">
+    <div class="methodology" id="methodologyLine">Loading results…</div>
+    <div id="resultsBody"></div>
+  </div>
+
+  <div class="view" id="view-explorer" style="flex-direction:column; padding:20px 26px; overflow-y:auto;">
+    <div class="methodology">For inspecting results only — this never changes the agent. Data from
+      <code>docs/dashboard_data.json</code>.</div>
+    <div style="display:flex; gap:10px; margin:14px 0; flex-wrap:wrap;">
+      <select id="expDomain" style="width:auto;"><option value="">All domains</option></select>
+      <select id="expDifficulty" style="width:auto;"><option value="">All difficulties</option></select>
+      <select id="expDisfluency" style="width:auto;"><option value="">All disfluency types</option></select>
+      <select id="expPass" style="width:auto;">
+        <option value="">Pass/fail: all</option><option value="pass">Ours: pass</option><option value="fail">Ours: fail</option>
+      </select>
+      <select id="expExample" style="width:auto; min-width:260px;"></select>
+    </div>
+    <div id="expBody" class="chart-card">Loading…</div>
+  </div>
+
+  <div class="view" id="view-architecture" style="flex-direction:column; padding:22px 26px; overflow-y:auto; gap:16px;">
+    <div class="chart-card">
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:center; padding:10px 0;">
+        <div class="arch-box">🎙️ Audio in</div><div class="arrow" style="color:var(--blue-glow);">→</div>
+        <div class="arch-box arch-fast">Realtime model<br><span style="color:var(--muted); font-size:11px;">fast path: instant ack</span></div>
+        <div class="arrow" style="color:var(--blue-glow);">→</div>
+        <div class="arch-box">Proposed tool call</div><div class="arrow" style="color:var(--blue-glow);">→</div>
+        <div class="arch-box arch-gate">🔒 Commit Gate<br><span style="color:var(--muted); font-size:11px;">buffer · resolver check · dedupe · confirm</span></div>
+        <div class="arrow" style="color:var(--blue-glow);">→</div>
+        <div class="arch-box arch-slow">Tool execution<br><span style="color:var(--muted); font-size:11px;">slow path</span></div>
+        <div class="arrow" style="color:var(--blue-glow);">→</div>
+        <div class="arch-box">Grounded reply</div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <ol style="margin:0; padding-left:20px; line-height:2;">
+        <li><b>The problem:</b> a full-duplex voice agent hears continuously and can start acting before the user has finished a thought — disfluencies, pauses, and self-corrections are the norm, not the exception.</li>
+        <li><b>Why pre-emptive calls fail:</b> a realtime model can call a tool the instant it recognizes intent, before the user finishes correcting themselves — e.g. FDB-v3's own <code>travel_19</code>-style example, where a call fired on the first-mentioned destination is already wrong by the time the user finishes their sentence.</li>
+        <li><b>The commit gate:</b> every proposed call is buffered for a short debounce window before it executes for real, so a same-utterance correction can supersede it — the stale call is never recorded as having happened at all.</li>
+        <li><b>The block-only resolver:</b> cross-checks a buffered call's arguments against the turn's own transcript, and will only replace a value with one the user explicitly corrected away — it never injects a value the model didn't itself propose.</li>
+        <li><b>Idempotency and confirmation:</b> a repeated state-changing call with identical arguments is refused and returns the original result instead of running twice; a risky action additionally requires an explicit affirmative on record before it can execute at all.</li>
+      </ol>
+    </div>
+    <div style="font-size:11.5px; color:var(--muted);">See <code>agent/commit_gate.py</code> and <code>agent/resolver.py</code> for the actual implementation this diagram describes.</div>
   </div>
 </main>
+<style>
+  .arch-box { background: var(--panel-grad); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; font-size: 12.5px; text-align: center; }
+  .arch-box.arch-fast { border-color: var(--info); }
+  .arch-box.arch-gate { border-color: var(--blue-glow); box-shadow: 0 0 10px rgba(61,90,254,0.3); }
+  .arch-box.arch-slow { border-color: var(--warning); }
+</style>
 
 <footer>
-  <span>Zero duplicate actions: <span id="dupCounter">0 blocked</span></span>
+  <span>Duplicate state-changing actions blocked: <span id="dupCounter">0</span></span>
   <span>FDB-v3 · Samsung PRISM Gen AI Hackathon 3.0 · Theme 5</span>
 </footer>
 
 <script>
-const PIPELINE_STAGES = ["Mic", "Transcript", "Correction Resolver", "Reasoning", "Commit Gate", "Tools", "Reply"];
+/* =========================================================================================
+   PIPELINE / STATE — driven by real data-channel events (see extension/EVENTS.md):
+     captions {speaker, text, is_final, t}
+     latency  {stage: turn_end|first_audio|tool_call|answer, elapsed_ms, t}
+     gate     {event: buffered|superseded|executed|blocked_duplicate|confirmation_required|
+               confirmed|resolver_corrected_arg|resolver_correction_rejected, ...}
+   No literal "stage" event exists (cut for time) -- stage lighting below is inferred from the
+   latency+gate streams, documented per case.
+   ========================================================================================= */
+const PIPELINE_STAGES = ["Mic", "Transcript", "Resolver", "Reasoning", "Commit Gate", "Tools", "Reply"];
 const pipelineEl = document.getElementById('pipeline');
 PIPELINE_STAGES.forEach((name, i) => {
   const stage = document.createElement('div');
-  stage.className = 'stage';
+  stage.className = 'stage idle';
   stage.id = 'stage-' + i;
-  stage.innerHTML = `<div class="name">${name}</div><div class="ms">—</div>`;
+  stage.innerHTML = `<div class="name">${name}</div><div class="detail">—</div><div class="ms">—</div>`;
   pipelineEl.appendChild(stage);
   if (i < PIPELINE_STAGES.length - 1) {
     const arrow = document.createElement('div');
     arrow.className = 'arrow';
+    arrow.id = 'arrow-' + i;
     arrow.textContent = '→';
     pipelineEl.appendChild(arrow);
   }
 });
 
-function lightStage(i, ms) {
+function setStage(i, cls, detail, ms) {
   const el = document.getElementById('stage-' + i);
-  el.classList.add('lit');
+  el.className = 'stage ' + cls;
+  if (detail !== undefined) el.querySelector('.detail').textContent = detail;
   if (ms !== undefined && ms !== null) el.querySelector('.ms').textContent = ms.toFixed(0) + ' ms';
-  setTimeout(() => el.classList.remove('lit'), 2200);
+  if (i > 0) {
+    const arrow = document.getElementById('arrow-' + (i - 1));
+    arrow.classList.add('pulse');
+    setTimeout(() => arrow.classList.remove('pulse'), 650);
+  }
 }
 function resetStages() {
   PIPELINE_STAGES.forEach((_, i) => {
     const el = document.getElementById('stage-' + i);
-    el.classList.remove('lit');
+    el.className = 'stage idle';
+    el.querySelector('.detail').textContent = '—';
     el.querySelector('.ms').textContent = '—';
   });
 }
 
-const stats = { turns: 0, executed: 0, corrections: 0, blocked: 0 };
+const stats = { turns: 0, executed: 0, corrections: 0, blocked: 0, confirm: 0 };
 function renderStats() {
-  document.getElementById('statTurns').textContent = stats.turns;
-  document.getElementById('statExecuted').textContent = stats.executed;
-  document.getElementById('statCorrections').textContent = stats.corrections;
-  document.getElementById('statBlocked').textContent = stats.blocked;
+  statTurns.textContent = stats.turns;
+  statExecuted.textContent = stats.executed;
+  statCorrections.textContent = stats.corrections;
+  statBlocked.textContent = stats.blocked;
+  statConfirm.textContent = stats.confirm;
   const dup = document.getElementById('dupCounter');
-  dup.textContent = stats.blocked + ' blocked';
+  dup.textContent = stats.blocked;
   dup.className = stats.blocked > 0 ? 'has-dups' : '';
 }
 
 const gatePanel = document.getElementById('gatePanel');
-let gateFirstItem = true;
+let gateFirst = true;
 function addGateItem(kind, tool, reason) {
-  if (gateFirstItem) { gatePanel.innerHTML = ''; gateFirstItem = false; }
+  if (gateFirst) { gatePanel.innerHTML = ''; gateFirst = false; }
   const item = document.createElement('div');
   item.className = 'gate-item';
   item.innerHTML = `<span class="badge ${kind}"></span><span class="tool">${tool}</span>` +
                    (reason ? `<span class="reason">${reason}</span>` : '');
   gatePanel.prepend(item);
-  while (gatePanel.children.length > 30) gatePanel.removeChild(gatePanel.lastChild);
+  while (gatePanel.children.length > 40) gatePanel.removeChild(gatePanel.lastChild);
+  lastAction.textContent = `${tool} — ${reason || kind}`;
 }
 
 const timelineEl = document.getElementById('timeline');
+let timelineFirst = true;
 function addTimelineEntry(html) {
+  if (timelineFirst) { timelineEl.innerHTML = ''; timelineFirst = false; }
   const div = document.createElement('div');
   div.className = 'turn';
   div.innerHTML = html;
@@ -265,34 +397,35 @@ function addTimelineEntry(html) {
 function handleGateEvent(msg) {
   switch (msg.event) {
     case 'buffered':
-      lightStage(4, msg.buffer_ms); // Commit Gate
-      addGateItem('pending', msg.tool, 'buffered ' + msg.buffer_ms + 'ms');
+      setStage(4, 'active', `buffered ${msg.buffer_ms}ms`, msg.buffer_ms);
+      addGateItem('pending', msg.tool, `buffered ${msg.buffer_ms}ms`);
       break;
     case 'superseded':
       stats.corrections++; renderStats();
-      lightStage(2); // Correction Resolver
-      addTimelineEntry(
-        `<span class="strike">${msg.tool}(${JSON.stringify(msg.old_args)})</span> ` +
-        `<span class="meta">superseded before it ever ran</span>`);
+      setStage(2, 'done', `${msg.tool}: call superseded`);
+      addTimelineEntry(`<span class="strike">${msg.tool}(${JSON.stringify(msg.old_args || {})})</span>` +
+        `<span class="chip">superseded before it ran</span>`);
       break;
     case 'resolver_corrected_arg':
       stats.corrections++; renderStats();
-      lightStage(2);
-      addTimelineEntry(
-        `${msg.tool}.${msg.arg}: <span class="strike">${msg.from_value}</span> → ` +
+      setStage(2, 'done', `${msg.arg}: ${msg.from_value} → ${msg.to_value}`);
+      addTimelineEntry(`${msg.tool}.${msg.arg}: <span class="strike">${msg.from_value}</span> → ` +
         `<span class="corrected-to">${msg.to_value}</span>`);
       break;
     case 'executed':
       stats.executed++; renderStats();
-      lightStage(5); // Tools
+      setStage(5, 'done', msg.tool);
       addGateItem('executed', msg.tool, 'executed');
       break;
     case 'blocked_duplicate':
       stats.blocked++; renderStats();
+      setStage(4, 'blocked', `${msg.tool}: duplicate`);
       addGateItem('blocked', msg.tool, 'duplicate — already executed this session');
       break;
     case 'confirmation_required':
-      addGateItem('blocked', msg.tool, 'awaiting explicit confirmation');
+      stats.confirm++; renderStats();
+      setStage(4, 'blocked', `${msg.tool}: needs confirmation`);
+      addGateItem('info', msg.tool, 'awaiting explicit confirmation');
       break;
     case 'confirmed':
       addGateItem('pending', msg.tool, 'confirmed by user');
@@ -309,36 +442,81 @@ function handleLatencyEvent(msg) {
     case 'turn_end':
       stats.turns++; renderStats();
       resetStages();
-      lightStage(0, 0); lightStage(1, 0); // Mic, Transcript
+      setStage(0, 'done', 'heard', 0); setStage(1, 'done', 'transcribed', 0);
+      setStage(3, 'active', 'thinking…');
       break;
     case 'first_audio':
-      lightStage(6, msg.elapsed_ms); // Reply (ack)
+      setStage(6, 'done', 'ack sent', msg.elapsed_ms);
       latencyValEl.textContent = msg.elapsed_ms.toFixed(0) + ' ms';
       break;
     case 'tool_call':
-      lightStage(3, msg.elapsed_ms); // Reasoning (decision made)
+      setStage(3, 'done', 'decision made', msg.elapsed_ms);
       break;
     case 'answer':
-      lightStage(6, msg.elapsed_ms); // Reply (final)
+      setStage(6, 'done', 'replied', msg.elapsed_ms);
       latencyValEl.textContent = msg.elapsed_ms.toFixed(0) + ' ms';
       break;
   }
 }
 
 const captionsEl = document.getElementById('captions');
+let captionsFirst = true;
 function handleCaption(msg) {
-  captionsEl.innerHTML = msg.is_final
-    ? msg.text
-    : `<span class="interim">${msg.text}</span>`;
+  if (captionsFirst) { captionsEl.innerHTML = ''; captionsFirst = false; }
+  const row = document.createElement('div');
+  row.className = 'row';
+  const who = msg.speaker === 'agent' ? 'agent' : 'user';
+  row.innerHTML = `<span class="who ${who}">${who}</span>${msg.text}`;
+  captionsEl.appendChild(row);
+  captionsEl.scrollTop = captionsEl.scrollHeight;
+  if (who === 'user') setStage(1, 'active', msg.text.split(' ').slice(-6).join(' '));
+  else {
+    setStage(6, 'active', msg.text.split(' ').slice(0, 6).join(' '));
+    const dot = document.getElementById('avatarDot');
+    dot.classList.add('speaking');
+    setTimeout(() => dot.classList.remove('speaking'), 1500);
+  }
 }
 
 const decoder = new TextDecoder();
+let recording = false;
+let recordBuffer = [];
 function onDataReceived(payload, participant, kind, topic) {
   let msg;
   try { msg = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
-  if (topic === 'gate') handleGateEvent(msg);
-  else if (topic === 'latency') handleLatencyEvent(msg);
-  else if (topic === 'captions') handleCaption(msg);
+  if (recording) recordBuffer.push({ t: Date.now() / 1000, topic, payload: msg });
+  try {
+    if (topic === 'gate') handleGateEvent(msg);
+    else if (topic === 'latency') handleLatencyEvent(msg);
+    else if (topic === 'captions') handleCaption(msg);
+  } catch (e) { console.warn('event handling failed (ignored):', topic, e); }
+}
+
+const recordBtn = document.getElementById('recordBtn');
+recordBtn.onclick = async () => {
+  if (!recording) {
+    recording = true; recordBuffer = [];
+    recordBtn.textContent = '⏹ Stop + save recording';
+  } else {
+    recording = false;
+    recordBtn.textContent = '⏺ Record this session';
+    if (recordBuffer.length === 0) { alert('No events captured yet — talk to the agent first.'); return; }
+    const name = 'session_' + new Date().toISOString().replace(/[:.]/g, '-');
+    const resp = await fetch('/api/replays/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, events: recordBuffer }),
+    });
+    const result = await resp.json();
+    if (result.saved) { alert(`Saved replay: ${result.saved} (${result.count} events)`); loadReplayList(); }
+    else alert('Save failed: ' + (result.error || 'unknown error'));
+  }
+};
+
+function setConn(state) {
+  const pill = document.getElementById('connPill');
+  const label = document.getElementById('connLabel');
+  pill.className = 'pill ' + (state === 'Live' ? 'live' : state === 'Replay' ? 'replay' : '');
+  label.textContent = state;
 }
 
 document.getElementById('joinBtn').onclick = async () => {
@@ -350,11 +528,12 @@ document.getElementById('joinBtn').onclick = async () => {
 
   const room = new LivekitClient.Room();
   room.on(LivekitClient.RoomEvent.DataReceived, onDataReceived);
-  room.on(LivekitClient.RoomEvent.Disconnected, () => statusEl.textContent = 'Disconnected');
+  room.on(LivekitClient.RoomEvent.Disconnected, () => { statusEl.textContent = 'Disconnected'; setConn('Idle'); });
 
   statusEl.textContent = 'Connecting...';
   await room.connect(url, token);
   statusEl.textContent = 'Connected — enabling mic + camera...';
+  setConn('Live');
 
   await room.localParticipant.setMicrophoneEnabled(true);
   await room.localParticipant.setCameraEnabled(true, {
@@ -364,54 +543,249 @@ document.getElementById('joinBtn').onclick = async () => {
   if (camPub && camPub.track) camPub.track.attach(document.getElementById('localVideo'));
 
   statusEl.textContent = 'Live — talk to the agent now.';
+  document.getElementById('recordBtn').disabled = false;
 };
 
-// --- tabs ---
+/* ---------- Replay mode ---------- */
+async function loadReplayList() {
+  try {
+    const resp = await fetch('/api/replays');
+    const names = await resp.json();
+    const sel = document.getElementById('replaySelect');
+    if (names.length === 0) { sel.innerHTML = '<option value="">Replay: none recorded yet</option>'; return; }
+    sel.innerHTML = names.map(n => `<option value="${n}">Replay: ${n}</option>`).join('');
+    document.getElementById('replayBtn').disabled = false;
+  } catch (e) { /* replays are optional */ }
+}
+document.getElementById('replayBtn').onclick = async () => {
+  const name = document.getElementById('replaySelect').value;
+  if (!name) return;
+  const resp = await fetch('/api/replays/' + encodeURIComponent(name));
+  const text = await resp.text();
+  const lines = text.trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
+  if (lines.length === 0) return;
+  setConn('Replay');
+  addTimelineEntry(`<span class="chip" style="background:var(--info);color:#000;">Replay of recorded session — ${name}</span>`);
+  const t0 = lines[0].t;
+  let prevT = t0;
+  for (const entry of lines) {
+    const wait = Math.max(0, (entry.t - prevT) * 1000);
+    prevT = entry.t;
+    await new Promise(r => setTimeout(r, Math.min(wait, 3000)));
+    onDataReceived(new TextEncoder().encode(JSON.stringify(entry.payload)), null, null, entry.topic);
+  }
+};
+loadReplayList();
+
+/* ---------- tabs ---------- */
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    if (btn.dataset.view === 'results' && !window.__resultsLoaded) loadResults();
+    if (btn.dataset.view === 'explorer' && !window.__explorerLoaded) loadExplorer();
   };
 });
 
-// --- results tab: static snapshot from results/OVERNIGHT_REPORT.md, regenerate RESULTS_DATA
-// below by re-running that report and copying its head-to-head numbers. Baseline is flagged
-// incomplete per the report's own warning banner — never presented as a real comparison.
-const RESULTS_DATA = {
-  baselineIncomplete: true,
-  metrics: [
-    { label: 'Turn-take', ours: 99.0, baseline: 0.0 },
-    { label: 'Tool sel.', ours: 86.4, baseline: null },
-    { label: 'Arg acc.', ours: 42.3, baseline: null },
-    { label: 'Pass@1', ours: 29.0, baseline: 0.0 },
-  ],
-};
-function renderResults() {
-  const warn = document.getElementById('resultsWarn');
-  warn.textContent = RESULTS_DATA.baselineIncomplete
-    ? '⚠️ Baseline run is incomplete (stalled ~4.5h before being caught, stopped short of ' +
-      '100/100 rather than restarted without asking). Baseline bars are not a real measurement ' +
-      '— shown only where it has any completed data at all.'
-    : '';
-  const grid = document.getElementById('chartGrid');
-  const card = document.createElement('div');
-  card.className = 'chart-card';
-  card.innerHTML = '<h3>Ours vs. Baseline (exact-match)</h3>';
-  RESULTS_DATA.metrics.forEach(m => {
-    const row = (label, val, cls) => {
-      const pct = val === null ? 0 : val;
-      return `<div class="bar-row"><span class="label">${label}</span>
-        <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
-        <span class="val">${val === null ? 'n/a' : val.toFixed(1) + '%'}</span></div>`;
-    };
-    card.innerHTML += `<div style="margin-bottom:14px;"><div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">${m.label}</div>` +
-      row('ours', m.ours, 'ours') + row('base', m.baseline, 'baseline') + `</div>`;
-  });
-  grid.appendChild(card);
+/* =========================================================================================
+   RESULTS TAB — every number below is read from /api/results (docs/dashboard_data.json, built
+   by scripts/build_dashboard_data.py from real result/eval files). Nothing here is hardcoded.
+   ========================================================================================= */
+function pct(x) { return (x === null || x === undefined) ? null : (x * 100); }
+function fmtPct(x) {
+  const p = pct(x);
+  return p === null ? '<span class="rval nodata">no baseline data</span>' : `<span class="rval">${p.toFixed(1)}%</span>`;
 }
-renderResults();
+function barRow(label, value, cls) {
+  const p = pct(value);
+  if (p === null) {
+    return `<div class="bar-row"><span class="rlabel">${label}</span>
+      <div class="bar-track"></div><span class="rval nodata">no baseline data</span></div>`;
+  }
+  return `<div class="bar-row"><span class="rlabel">${label}</span>
+    <div class="bar-track"><div class="bar-fill ${cls}" style="width:${p}%"></div></div>
+    <span class="rval tabular">${p.toFixed(1)}%</span></div>`;
+}
+function deltaSpan(ours, base) {
+  if (ours === null || base === null || ours === undefined || base === undefined) return '';
+  const d = (pct(ours) - pct(base));
+  const cls = d >= 0 ? 'pos' : 'neg';
+  const sign = d >= 0 ? '+' : '';
+  return `<span class="delta ${cls}">${sign}${d.toFixed(1)} pts</span>`;
+}
+
+async function loadResults() {
+  window.__resultsLoaded = true;
+  const body = document.getElementById('resultsBody');
+  let data;
+  try {
+    const resp = await fetch('/api/results');
+    data = await resp.json();
+    if (data.error) throw new Error(data.error);
+  } catch (e) {
+    document.getElementById('methodologyLine').textContent =
+      'Could not load results: ' + e.message + ' — run scripts/build_dashboard_data.py.';
+    return;
+  }
+
+  document.getElementById('methodologyLine').innerHTML =
+    `<b>Ours:</b> all ${data.ours_full.n} FDB-v3 examples, exact-match scorer (${data.judge}). ` +
+    `<b>Ours vs baseline:</b> the ${data.common51.n} recordings both actually completed, same ` +
+    `simplified tool-selection scorer applied identically to both sides (see note below).`;
+
+  const h = data.ours_full.headline;
+  const headlineCards = [
+    ['Tool selection', h.tool_selection_acc, 'Fraction of expected tool-call names correctly identified and called, no extras (recall × precision).'],
+    ['Argument accuracy', h.argument_acc, 'Of the correctly-selected tool calls, how many had fully correct arguments (exact-match scorer).'],
+    ['Pass@1', h.pass_at_1, 'Fraction of scenarios where every expected tool call happened with correct arguments and nothing extra.'],
+    ['Turn-take rate', h.turn_take_rate, 'Fraction of scenarios where the agent spoke at all (vs. staying silent).'],
+    ['Interruption rate', h.interruption_rate, 'Fraction of scenarios where the user\'s turn was interrupted by the agent.'],
+  ];
+  let html = `<div class="section-title">Ours — full 100-example benchmark</div>
+    <div class="headline-grid">` +
+    headlineCards.map(([label, val, tip]) => `
+      <div class="metric-card"><div class="tooltip">${tip}</div>
+        <div class="label">${label}</div><div class="value tabular">${val === null ? '—' : (pct(val).toFixed(1) + '%')}</div>
+      </div>`).join('') +
+    `<div class="metric-card"><div class="tooltip">Mean time from end-of-turn to the agent's first spoken reply.</div>
+        <div class="label">Avg latency</div><div class="value tabular">${h.avg_latency_s ? h.avg_latency_s.toFixed(2) + 's' : '—'}</div></div>
+    </div>`;
+
+  const c = data.common51;
+  html += `<div class="section-title" style="margin-top:8px;">Ours vs. baseline — common ${c.n} recordings</div>
+    <div class="chart-card">
+      <div class="bar-group">
+        <div class="glabel"><span>Tool selection accuracy</span>${deltaSpan(c.ours.tool_selection_acc, c.baseline.tool_selection_acc)}</div>
+        ${barRow('ours', c.ours.tool_selection_acc, 'ours')}
+        ${barRow('baseline', c.baseline.tool_selection_acc, 'baseline')}
+      </div>
+      <div style="font-size:11px;color:var(--muted);">${c.note}</div>
+    </div>`;
+
+  function breakdownCard(title, oursMap, baseMap) {
+    const labels = Array.from(new Set([...Object.keys(oursMap), ...Object.keys(baseMap)])).sort();
+    return `<div class="chart-card"><div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">${title}</div>` +
+      labels.map(l => {
+        const ov = oursMap[l], bv = baseMap[l];
+        return `<div class="bar-group"><div class="glabel"><span>${l} (n=${ov ? ov.n : (bv ? bv.n : 0)})</span></div>
+          ${barRow('ours', ov ? ov.tool_selection_acc : null, 'ours')}
+          ${barRow('baseline', bv ? bv.tool_selection_acc : null, 'baseline')}</div>`;
+      }).join('') + `</div>`;
+  }
+  html += `<div class="section-title" style="margin-top:8px;">Breakdowns (common ${c.n})</div>
+    <div class="breakdown-grid">
+      ${breakdownCard('By domain', c.ours.by_domain, c.baseline.by_domain)}
+      ${breakdownCard('By difficulty', c.ours.by_difficulty, c.baseline.by_difficulty)}
+      ${breakdownCard('By disfluency type', c.ours.by_disfluency, c.baseline.by_disfluency)}
+    </div>`;
+
+  const g = data.commit_gate_benchmark;
+  html += `<div class="section-title" style="margin-top:8px;">Commit gate on the benchmark run</div>
+    <div class="chart-card">
+      <div class="stat-row">Total tool calls executed (ours, 100 examples) <b>${g.total_tool_calls_executed}</b></div>
+      <div class="stat-row">Pre-emptive calls detected (before user finished speaking) <b>${g.preemptive_calls_detected}</b></div>
+      <div class="stat-row">Commit-gate buffer window (configured) <b>${g.buffer_ms_configured} ms</b></div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:8px;">${g.preemptive_calls_note}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">${g.note}</div>
+    </div>`;
+
+  html += `<div class="limitations"><b>Limitations</b><ul>${data.limitations.map(l => `<li>${l}</li>`).join('')}</ul></div>`;
+
+  body.innerHTML = html;
+}
+
+/* =========================================================================================
+   BENCHMARK EXPLORER — reads the same docs/dashboard_data.json "examples" array (100 rows,
+   one per recording: 79 unique scenarios, 21 recorded twice by different speakers — see
+   build_dashboard_data.py's module docstring for why rows are keyed by folder, not scenario
+   id). "Passed" here is an approximation (recall==1 and precision==1 on the simplified
+   scorer), not the official pass/fail field, since official reports can't be safely re-keyed
+   per-recording -- see Results tab note.
+   ========================================================================================= */
+let explorerData = null;
+function isPass(row) { return row.ours.tool_selection.recall === 1 && row.ours.tool_selection.precision === 1; }
+
+async function loadExplorer() {
+  window.__explorerLoaded = true;
+  const body = document.getElementById('expBody');
+  try {
+    const resp = await fetch('/api/results');
+    explorerData = await resp.json();
+  } catch (e) {
+    body.textContent = 'Could not load results: ' + e.message;
+    return;
+  }
+  const rows = explorerData.examples;
+  const uniq = (fn) => Array.from(new Set(rows.flatMap(fn))).sort();
+  const fill = (sel, values, prefix) => {
+    values.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = prefix ? `${prefix}: ${v}` : v; sel.appendChild(o); });
+  };
+  fill(document.getElementById('expDomain'), uniq(r => [r.domain]));
+  fill(document.getElementById('expDifficulty'), uniq(r => [r.difficulty]));
+  fill(document.getElementById('expDisfluency'), uniq(r => r.disfluency));
+
+  function applyFilters() {
+    const dom = document.getElementById('expDomain').value;
+    const diff = document.getElementById('expDifficulty').value;
+    const disf = document.getElementById('expDisfluency').value;
+    const passf = document.getElementById('expPass').value;
+    const filtered = rows.filter(r =>
+      (!dom || r.domain === dom) && (!diff || r.difficulty === diff) &&
+      (!disf || r.disfluency.includes(disf)) &&
+      (!passf || (passf === 'pass') === isPass(r)));
+    const sel = document.getElementById('expExample');
+    sel.innerHTML = filtered.map(r => `<option value="${r.folder}">${r.id} (${r.pid.slice(0,6)}) — ${r.domain}/${r.difficulty} — ${isPass(r) ? '✓' : '✗'}</option>`).join('');
+    if (filtered.length) renderExample(filtered[0].folder); else body.innerHTML = 'No examples match these filters.';
+  }
+  ['expDomain', 'expDifficulty', 'expDisfluency', 'expPass'].forEach(id =>
+    document.getElementById(id).addEventListener('change', applyFilters));
+  document.getElementById('expExample').addEventListener('change', (e) => renderExample(e.target.value));
+  applyFilters();
+}
+
+function callChip(call, expectedNames) {
+  const ok = expectedNames.includes(call.function);
+  return `<span class="chip" style="border-color:${ok ? 'var(--success)' : 'var(--danger)'};">${ok ? '✓' : '✗'} ${call.function}(${JSON.stringify(call.args||{})})</span>`;
+}
+
+function renderExample(folder) {
+  const r = explorerData.examples.find(e => e.folder === folder);
+  if (!r) return;
+  const expNames = r.expected_tool_calls.map(c => c.function);
+  const actNames = r.ours.actual_tool_calls.map(c => c.function);
+  document.getElementById('expBody').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:baseline;">
+      <div style="font-size:15px; font-weight:600;">${r.id} — ${r.title}</div>
+      <div style="color:var(--muted); font-size:12px;">${r.domain} · ${r.difficulty} · ${r.disfluency.join(', ') || 'none'}</div>
+    </div>
+    <div style="margin:12px 0; font-size:13px; line-height:1.6;">
+      <div style="color:var(--muted); font-size:11px; text-transform:uppercase;">User transcript (ASR)</div>
+      ${r.ours.input_transcript || '<span class="rval nodata">not available</span>'}
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:12px;">
+      <div><div style="color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:6px;">Expected tool calls</div>
+        ${r.expected_tool_calls.map(c => `<div class="chip" style="display:block; margin-bottom:4px;">${c.function}(${JSON.stringify(c.args||{})})</div>`).join('') || '<span class="rval nodata">none expected</span>'}</div>
+      <div><div style="color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:6px;">Ours — actual tool calls</div>
+        ${r.ours.actual_tool_calls.map(c => `<div style="margin-bottom:4px;">${callChip(c, expNames)}</div>`).join('') || '<span class="rval nodata">no calls made</span>'}</div>
+    </div>
+    <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">
+      Ours tool-selection: recall ${(r.ours.tool_selection.recall*100).toFixed(0)}%, precision ${(r.ours.tool_selection.precision*100).toFixed(0)}%
+      ${isPass(r) ? '<span style="color:var(--success);"> — pass</span>' : '<span style="color:var(--danger);"> — fail</span>'}
+    </div>
+    <div style="margin-bottom:12px;"><div style="color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:6px;">Ours — spoken response</div>
+      ${r.ours.transcript || '<span class="rval nodata">no response recorded</span>'}</div>
+    <div style="border-top:1px dashed var(--border); padding-top:10px;">
+      <div style="color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:6px;">Baseline (same recording)</div>
+      ${r.baseline ? `
+        ${r.baseline.actual_tool_calls.map(c => `<div style="margin-bottom:4px;">${callChip(c, expNames)}</div>`).join('') || '<span class="rval nodata">no calls made</span>'}
+        <div style="font-size:12px; color:var(--muted); margin-top:6px;">recall ${(r.baseline.tool_selection.recall*100).toFixed(0)}%, precision ${(r.baseline.tool_selection.precision*100).toFixed(0)}%</div>
+      ` : '<span class="rval nodata">no baseline data for this recording</span>'}
+    </div>
+    <div style="font-size:11px; color:var(--muted); margin-top:12px;">Commit-gate/resolver events: not recorded for the benchmark run (see Results tab note) — live for new Live-tab sessions only.</div>
+  `;
+}
 </script>
 </body>
 </html>

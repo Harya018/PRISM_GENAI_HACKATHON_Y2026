@@ -241,16 +241,36 @@ async def entrypoint(ctx: agents.JobContext):
 
     @session.on("user_input_transcribed")
     def on_user_input(msg: agents.voice.UserInputTranscribedEvent):
-        text = getattr(msg, "transcript", "") or ""
-        turn.append(text)
-        payload = json.dumps({"text": text,
-                             "is_final": getattr(msg, "is_final", True)}).encode("utf-8")
+        # Only accumulates the turn transcript for the gate/resolver -- captions themselves are
+        # published from conversation_item_added below, which covers both speakers in one event.
+        turn.append(getattr(msg, "transcript", "") or "")
+
+    def _publish(topic: str, payload: dict) -> None:
+        data = json.dumps(payload, default=str).encode("utf-8")
         try:
             asyncio.ensure_future(
-                ctx.room.local_participant.publish_data(payload, reliable=True,
-                                                        topic="captions"))
+                ctx.room.local_participant.publish_data(data, reliable=True, topic=topic))
         except Exception:
-            pass
+            pass  # telemetry only -- never affect agent behavior
+
+    @session.on("conversation_item_added")
+    def on_conversation_item(ev) -> None:
+        """Dashboard caption event {speaker, text, is_final, t} -- covers both user and agent
+        turns from one LiveKit Agents event, so the Live tab's caption feed and the pipeline's
+        'Reply' stage detail both have real text to show (additive; doesn't affect what the
+        agent hears or says)."""
+        item = ev.item
+        role = getattr(item, "role", "user")
+        content = getattr(item, "content", None)
+        if isinstance(content, list):
+            text = " ".join(c for c in content if isinstance(c, str))
+        else:
+            text = content or ""
+        if not text:
+            return
+        speaker = "agent" if role == "assistant" else "user"
+        _publish("captions", {"speaker": speaker, "text": text, "is_final": True,
+                             "t": time.time()})
 
     @session.on("agent_state_changed")
     def on_agent_state(ev: agents.voice.AgentStateChangedEvent):

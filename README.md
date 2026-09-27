@@ -6,6 +6,41 @@ Scored per `docs/Theme05_Participant_Guide_UPDATED_FBD.docx`: 60% organizers' re
 technical background: `../RESEARCH_FDB.md`. Architecture, results, and the extension writeup land
 here as Phases 3–6 complete — this file currently covers environment setup only.
 
+## Dashboard
+
+`extension/dashboard.html`, served at `http://localhost:8450` by `python extension/web_client.py`
+(alongside the extension agent, `python extension/device_agent.py start` — never while a
+benchmark run is active). Four tabs:
+
+- **Live** — join with mic + camera and talk to the device-support agent. Left: camera preview
+  and a live captioned conversation (both speakers). Center: the seven-stage pipeline (Mic →
+  Transcript → Resolver → Reasoning → Commit Gate → Tools → Reply), each stage lighting up with
+  a one-line live detail and its latency, plus a correction timeline showing corrected-away
+  values struck through and the resolved value in green. Right: session counters (turns, tool
+  calls executed, corrections caught, duplicates blocked, confirmations requested) and a
+  newest-first commit-gate decision feed. A **Replay** dropdown plays back a recorded session
+  through the same rendering code at real speed, clearly labelled while active; a **Record this
+  session** button saves the next live session as a replay for later (`extension/replays/*.jsonl`,
+  via `POST /api/replays/save`).
+- **Results** — every number is read from `docs/dashboard_data.json` (built by
+  `scripts/build_dashboard_data.py` from the real `result_*.json`/evaluation-report files, never
+  hardcoded): full-100 headline metrics for "ours", an ours-vs-baseline comparison over the 51
+  recordings baseline actually completed (never "0.0%"/"n/a" for missing data — labelled "no
+  baseline data" instead), breakdowns by domain/difficulty/disfluency type, a "commit gate on the
+  benchmark" panel with what's honestly derivable from the frozen run's own recorded timestamps,
+  and a limitations footnote (scorer strictness, baseline coverage, the known cross-turn
+  correction gap).
+- **Benchmark Explorer** — browse and filter all 100 recordings (domain/difficulty/disfluency/
+  pass-fail), inspect any one: transcript, expected vs. actual tool calls with ✓/✗ markers, and
+  the baseline's result on the same recording where one exists. Inspection only — never changes
+  the agent.
+- **Architecture** — a five-step explanation of the pre-emptive-call problem and how the commit
+  gate, block-only resolver, and idempotency/confirmation checks address it.
+
+Regenerate the Results/Explorer data after any new benchmark run: `python
+scripts/build_dashboard_data.py` (writes `docs/dashboard_data.json`). See
+`extension/EVENTS.md` for the live data-channel event contract.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` (gitignored — never commit it; verify with `git check-ignore .env`).
