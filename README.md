@@ -67,4 +67,49 @@ short:
 - An opt-in `--proxy-llm` judge (Gemini, identical prompts to the official gpt-4o judge) for
   environments without `OPENAI_API_KEY`. **Opt-in only, never the default** — `run_fdb_v3.sh`
   always uses the official `--use-llm` (gpt-4o) path unless `--proxy-llm` is passed explicitly,
-  and every report the proxy judge produces is labelled as such.
+  and every report the proxy judge produces is labelled as such. Note: the free-tier Gemini
+  quota (20 requests/day/project) cannot cover a full-100 run's ~200 judge calls, so treat proxy
+  numbers from a full run as indicative only — use `--use-llm` with an `OPENAI_API_KEY` for
+  numbers you'd cite.
+
+## Limitations
+
+- **Same-utterance self-correction is handled; cross-turn correction (after a pause, in a
+  separate turn) is not.** The commit gate's debounce buffer (`agent/commit_gate.py`) correctly
+  resolves a correction that arrives *within* the same continuous utterance — e.g. "flights to
+  Paris — actually, no, make that Berlin" never fires the Paris call, because the resolver sees
+  the correction before the buffer's debounce window closes. But once the model has already
+  emitted a tool call and moved on to a **new turn**, there is no buffer left to intercept a
+  correction that arrives later. Two observed failures of exactly this kind: `travel_10`
+  (Miami → Paris) and `finance_12` (100 → 150) — in both, the agent's stale call had already
+  fired *before* a correction that came after a long pause, in what the transcript treats as a
+  separate turn rather than a continuation of the same one.
+  - We deliberately did not attempt a fix for this after the code freeze. The two real fixes we
+    considered — (a) a **provisional-vs-confirmed commit** state for read-only calls, so a
+    same-session correction can still retract a call whose result hasn't been spoken back to the
+    user yet, and (b) **longer semantic endpointing**, holding the turn open across a pause when
+    the transcript alone can't yet tell whether the user is done or mid-correction — both change
+    turn-taking/commit timing behavior broadly enough that we didn't want to risk it against a
+    frozen, already-scored agent this late. This is also not a gap unique to our approach: the
+    FDB-v3 paper itself (arXiv 2604.04847) treats disambiguating a genuine cross-turn correction
+    from an unrelated new request as an open problem for full-duplex tool-use agents, not a
+    solved one.
+- **`ecommerce_01` (1/100 in the scored `ours_full` run) came back with an empty transcript** on
+  two separate attempts, with no exception or state change in the agent's own log — read as a
+  rare Gemini Live session-activation flake rather than a reproducible bug, and left as a
+  documented residual gap rather than retried indefinitely.
+- **The Gemini proxy judge cannot score a full 100-example run** (see "Changes to the benchmark
+  harness" above) — a structural quota limit of the free tier, not something patchable in this
+  codebase. It remains useful for spot checks and the 17-example verification subset.
+
+## What's next
+
+- Provisional/confirmed commit state for read-only tool calls, to close the cross-turn
+  correction gap above without touching same-utterance debounce behavior that's already working.
+- Longer, adaptive semantic endpointing keyed on disfluency-feature likelihood rather than a
+  fixed pause duration, so a genuine mid-thought pause and a completed turn are told apart more
+  reliably before a call commits.
+- Extend the extension's (`extension/`) per-stage latency telemetry back into the benchmark path
+  itself (currently extension-only, gated off the scored agent by design) once there's a UI to
+  consume it, to make future cross-turn-correction failures diagnosable from timing data instead
+  of manual transcript reading.
