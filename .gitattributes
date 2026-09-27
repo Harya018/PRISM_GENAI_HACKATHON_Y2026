@@ -1,0 +1,9 @@
+# Force LF regardless of the cloning machine's core.autocrlf — a patch/diff file (or a bash
+# script meant to run on the organizers' Linux re-run machine) must never pick up CRLF just
+# because it happened to be checked out on Windows. Discovered via a real fresh-clone Docker
+# reproduction test: a plain Windows `git clone` of this repo (default core.autocrlf=true)
+# silently converted every patches/*.diff to CRLF on checkout, which then broke `git apply`
+# inside the Linux container it was copied into.
+*.diff text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
