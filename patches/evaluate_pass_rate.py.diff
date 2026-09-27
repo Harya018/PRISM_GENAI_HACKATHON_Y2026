@@ -1,8 +1,8 @@
-﻿# REASON: harness reliability/tooling only; no scoring logic changed. Adds an opt-in
+# REASON: harness reliability/tooling only; no scoring logic changed. Adds an opt-in
 # --proxy-llm Gemini judge (identical prompt to the official gpt-4o judge) for use only when
 # OPENAI_API_KEY is unavailable; the default --use-llm path (gpt-4o) is untouched.
-# UPDATE: gemini-2.5-flash was deprecated server-side mid-session (404, "no longer available to
-# new users") — swapped to gemini-3.8-flash, verified working via a direct API call first.
+# UPDATE: gemini-2.5-flash was deprecated server-side mid-session (404, no longer available to
+# new users) -- swapped to gemini-3.8-flash, verified working via a direct API call first.
 diff --git a/v3/evaluate_pass_rate.py b/v3/evaluate_pass_rate.py
 index a07c7a5..c44b804 100644
 --- a/v3/evaluate_pass_rate.py

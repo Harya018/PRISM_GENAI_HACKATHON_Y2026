@@ -1,0 +1,71 @@
+# REASON: harness reliability only; no scoring logic changed. Adds an opt-in --agent-name flag
+# to request EXPLICIT LiveKit dispatch (RoomConfiguration + RoomAgentDispatch) when minting the
+# per-example join token, instead of always using anonymous/automatic dispatch. This is what
+# makes fdb-ours/fdb-baselines own explicit agent_name= on @server.rtc_session() actually
+# reachable -- without this, a batch run using anonymous dispatch could never be picked up by
+# an agent registered for explicit dispatch only, and the run would hang waiting for a job
+# assignment that never comes. Defaults to None (anonymous dispatch), unchanged from stock.
+diff --git a/v3/livekit_inference.py b/v3/livekit_inference.py
+index 5dad377..2739124 100644
+--- a/v3/livekit_inference.py
++++ b/v3/livekit_inference.py
+@@ -30,6 +30,8 @@ import numpy as np
+ 
+ from dotenv import load_dotenv
+ from livekit import api, rtc
++from livekit.protocol.room import RoomConfiguration
++from livekit.protocol.agent_dispatch import RoomAgentDispatch
+ 
+ load_dotenv(".env.local")
+ 
+@@ -102,7 +104,7 @@ CAPTURE_SAMPLE_RATE = 24000  # sample rate we request when receiving agent audio
+ CHUNK_DURATION_MS = 20  # 20 ms chunks (standard for WebRTC)
+ 
+ 
+-async def run(input_wav: str, output_wav: str, room_name: str):
++async def run(input_wav: str, output_wav: str, room_name: str, agent_name: str | None = None):
+     url = os.getenv("LIVEKIT_URL")
+     api_key = os.getenv("LIVEKIT_API_KEY")
+     api_secret = os.getenv("LIVEKIT_API_SECRET")
+@@ -123,7 +125,11 @@ async def run(input_wav: str, output_wav: str, room_name: str):
+     )
+ 
+     # ── Generate access token ─────────────────────────────────────────
+-    token = (
++    # agent_name requests EXPLICIT dispatch: only a worker registered under that exact name
++    # (@server.rtc_session(agent_name=...)) can ever be assigned this room — a benchmark
++    # evaluation room can then never be picked up by an unrelated agent (e.g. an extension or
++    # a manual test) running at the same time, and vice versa.
++    token_builder = (
+         api.AccessToken(api_key, api_secret)
+         .with_identity("wav-file-user")
+         .with_name("WAV File User")
+@@ -133,8 +139,12 @@ async def run(input_wav: str, output_wav: str, room_name: str):
+                 room=room_name,
+             )
+         )
+-        .to_jwt()
+     )
++    if agent_name:
++        token_builder = token_builder.with_room_config(
++            RoomConfiguration(agents=[RoomAgentDispatch(agent_name=agent_name)])
++        )
++    token = token_builder.to_jwt()
+ 
+     # ── Pre-allocate output buffer (same length as input) ───────────
+     # The output WAV will be exactly the same duration as the input WAV.
+@@ -339,8 +349,13 @@ def main():
+         "--room", default="test-room",
+         help="LiveKit room name (default: test-room).",
+     )
++    parser.add_argument(
++        "--agent-name", default=None,
++        help="Request explicit LiveKit dispatch for this agent name, so only that exact "
++             "worker can join this room (default: anonymous/automatic dispatch).",
++    )
+     args = parser.parse_args()
+-    asyncio.run(run(args.input, args.output, args.room))
++    asyncio.run(run(args.input, args.output, args.room, agent_name=args.agent_name))
+ 
+ 
+ if __name__ == "__main__":

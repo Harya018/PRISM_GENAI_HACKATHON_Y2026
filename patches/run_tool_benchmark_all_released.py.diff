@@ -1,21 +1,30 @@
-﻿# REASON: harness reliability only; no scoring logic changed. Adds --infer-only (skips loading
-# the ASR model and scoring, batch-level counterpart to run_tool_benchmark.py's same flag) so a
-# full run can do all agent inference first and all NeMo scoring afterward, never concurrently.
+# REASON: harness reliability only; no scoring logic changed. (1) Adds --infer-only (skips
+# loading the ASR model and scoring, batch-level counterpart to run_tool_benchmark.pys same
+# flag) so a full run can do all agent inference first and all NeMo scoring afterward, never
+# concurrently. (2) Adds --agent-name (also settable via LK_AGENT_NAME) so a batch run can
+# request EXPLICIT LiveKit dispatch end to end -- threaded through to process_single ->
+# run_livekit_inference -> livekit_inference.pys own --agent-name (see that diff).
 diff --git a/v3/run_tool_benchmark_all_released.py b/v3/run_tool_benchmark_all_released.py
-index c9fef37..813f5f7 100644
+index c9fef37..8d13abb 100644
 --- a/v3/run_tool_benchmark_all_released.py
 +++ b/v3/run_tool_benchmark_all_released.py
-@@ -98,6 +98,9 @@ def main():
+@@ -98,6 +98,15 @@ def main():
                          help="Model provider (gpt_realtime, grok, gemini2_5, gemini3_1, ultravox, cascaded)")
      parser.add_argument("--force", action="store_true", help="Overwrite existing results")
      parser.add_argument("--asr-only", action="store_true", help="Skip inference, only run ASR")
 +    parser.add_argument("--infer-only", action="store_true",
 +                        help="Run inference only, skip ASR/scoring (pair with a later "
 +                             "--asr-only pass — keeps NeMo off the CPU while the agent is live)")
++    parser.add_argument("--agent-name", type=str, default=os.getenv("LK_AGENT_NAME", ""),
++                        help="Request EXPLICIT LiveKit dispatch for this agent name (e.g. "
++                             "fdb-ours, fdb-baseline) so this run's rooms can only ever be "
++                             "picked up by that exact worker — never left blank for a real "
++                             "run once the corresponding agent script sets a matching "
++                             "agent_name on its @server.rtc_session().")
      args = parser.parse_args()
  
      root_dir = Path(args.root_dir)
-@@ -116,10 +119,15 @@ def main():
+@@ -116,10 +125,15 @@ def main():
          data = {}
      print(f"📋 Loaded {len(data)} scenarios from benchmark_data_v2.json")
  
@@ -35,12 +44,13 @@ index c9fef37..813f5f7 100644
  
      # 3. Discover Inputs (also picks up per-folder metadata.json)
      inputs = discover_inputs_released(root_dir)
-@@ -153,12 +161,12 @@ def main():
+@@ -153,12 +167,13 @@ def main():
              result = process_single(
                  speaker_id, example_id, input_path,
                  args.provider, data, asr_model,
 -                asr_only=args.asr_only, force=args.force
-+                asr_only=args.asr_only, force=args.force, infer_only=args.infer_only
++                asr_only=args.asr_only, force=args.force, infer_only=args.infer_only,
++                agent_name=args.agent_name or None,
              )
  
              if result is None:

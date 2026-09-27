@@ -8,11 +8,19 @@ reproducible failures (documented in each diff's own header and in `AI_USAGE_LOG
 
 | File | What changed | Why |
 |---|---|---|
-| `lk_agent_tool.py.diff` | `AgentServer(load_threshold=0.95, num_idle_processes=1)` | Default `num_idle_processes` is `cpu_count()` warm processes — too heavy here; caused the worker to go "unresponsive" and silently stop accepting jobs mid-run. |
-| `run_tool_benchmark.py.diff` | Subprocess timeout on the per-example inference call; `infer_only` mode; fixes `--asr-only` losing `room_name`/tool-call telemetry | An unbounded subprocess call hung forever on a dead agent with no recovery path. The `--asr-only` bug (telemetry silently empty) pre-dates this session's changes — a real upstream bug, not something introduced here. |
-| `run_tool_benchmark_all_released.py.diff` | `--infer-only` flag (batch-level counterpart) | Lets a full run do all inference first, then all NeMo scoring, never at the same time. |
-| `evaluate_tool_calls.py.diff` | Opt-in `--proxy-llm` (Gemini) judge | No `OPENAI_API_KEY` is available in this environment. `--proxy-llm` is **never the default** — the official `--use-llm` (gpt-4o) path is unchanged and is what the one-command reproduction script uses when a key is present. Every proxy-judged report is labelled `"judge": "gemini-2.5-flash (PROXY — not the official judge...)"`. |
+| `lk_agent_tool.py.diff` | `AgentServer(load_threshold=0.95, num_idle_processes=1)`; eager plugin import; explicit dispatch `agent_name="fdb-baseline"` | Default `num_idle_processes` is `cpu_count()` warm processes — too heavy here; caused the worker to go "unresponsive" and silently stop accepting jobs mid-run. Explicit dispatch means this worker can only ever be assigned a room created with `--agent-name fdb-baseline`, never one meant for `fdb-ours` or the extension. |
+| `run_tool_benchmark.py.diff` | Subprocess timeout on the per-example inference call; `infer_only` mode; fixes `--asr-only` losing `room_name`/tool-call telemetry; fixes an unconditional `hasattr(model, 'cuda')` crash on CPU-only machines; threads `agent_name` through to `livekit_inference.py` | An unbounded subprocess call hung forever on a dead agent with no recovery path. The `--asr-only` bug (telemetry silently empty) and the CUDA-check bug pre-date this session's changes — real upstream bugs, not something introduced here. |
+| `run_tool_benchmark_all_released.py.diff` | `--infer-only` flag (batch-level counterpart); `--agent-name`/`LK_AGENT_NAME` flag | Lets a full run do all inference first, then all NeMo scoring, never at the same time. `--agent-name` is required end-to-end once an agent uses explicit dispatch — see `livekit_inference.py.diff`. |
+| `livekit_inference.py.diff` | Opt-in `--agent-name` requesting explicit LiveKit dispatch (`RoomConfiguration`/`RoomAgentDispatch`) when minting the join token | **Without this, a batch run would hang forever**: `fdb-ours`/`fdb-baseline` register for explicit dispatch only (see the two diffs above), and a token minted with plain anonymous dispatch can never be routed to them — no job is ever assigned, so `run_tool_benchmark_all_released.py` would wait indefinitely for a room the agent will never receive. Caught by a fresh-clone reproduction test in a Docker container, which is exactly the failure mode that test exists to catch. Defaults to `None` (anonymous dispatch), unchanged from stock when omitted. |
+| `evaluate_tool_calls.py.diff` | Opt-in `--proxy-llm` (Gemini) judge | No `OPENAI_API_KEY` is available in this environment. `--proxy-llm` is **never the default** — the official `--use-llm` (gpt-4o) path is unchanged and is what the one-command reproduction script uses when a key is present. Every proxy-judged report is labelled `"judge": "gemini-3.8-flash (PROXY — not the official judge...)"`. Note: the free tier's 20-requests/day/project quota cannot cover a full-100 run — proxy numbers from a full run should be treated as indicative only. |
 | `evaluate_pass_rate.py.diff` | Same `--proxy-llm` addition, same rules | — |
+
+**`scripts/run_fdb_v3.sh` itself also needed a fix once these were verified**: it never actually
+passed `--agent-name` when invoking `run_tool_benchmark_all_released.py`, so even with every patch
+above applied correctly, the one-command script would still have deadlocked against an
+explicit-dispatch agent. Fixed by passing `--agent-name fdb-ours`/`fdb-baseline` (matching each
+agent's own `@server.rtc_session(agent_name=...)`) in step 6. Found and fixed via an actual
+fresh-clone Docker reproduction test — see `AI_USAGE_LOG.md`/`PROGRESS.md` for the full story.
 
 ## New files (not modifications — nothing to diff)
 

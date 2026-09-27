@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SentinelEdge Live — Device Support Agent</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<style>
+  :root {
+    --navy-0: #05070f;
+    --navy-1: #0a0f24;
+    --navy-2: #10173a;
+    --navy-3: #1a2350;
+    --samsung-blue: #1428A0;
+    --samsung-blue-bright: #3b5bff;
+    --amber: #f5a623;
+    --red: #ef4444;
+    --green: #22c55e;
+    --grey: #6b7280;
+    --text: #e8ebf7;
+    --text-dim: #8b93b8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--navy-0); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px; background: linear-gradient(90deg, var(--navy-1), var(--navy-2));
+    border-bottom: 1px solid var(--navy-3);
+  }
+  header h1 {
+    font-size: 18px; margin: 0; font-weight: 600; letter-spacing: 0.3px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--samsung-blue-bright);
+    box-shadow: 0 0 8px var(--samsung-blue-bright); }
+  .tabs { display: flex; gap: 4px; }
+  .tab-btn {
+    background: transparent; border: 1px solid var(--navy-3); color: var(--text-dim);
+    padding: 6px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px;
+  }
+  .tab-btn.active { background: var(--navy-2); color: var(--text); border-bottom-color: var(--navy-2); }
+  #latencyBadge {
+    background: var(--navy-3); border: 1px solid var(--samsung-blue-bright); border-radius: 20px;
+    padding: 6px 14px; font-size: 13px; font-variant-numeric: tabular-nums;
+  }
+  #latencyBadge .val { color: var(--samsung-blue-bright); font-weight: 700; }
+
+  main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .view { display: none; flex: 1; min-height: 0; }
+  .view.active { display: flex; }
+
+  .col { padding: 16px; overflow-y: auto; }
+  .col h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim);
+    margin: 0 0 12px 0;
+  }
+  .panel {
+    background: var(--navy-1); border: 1px solid var(--navy-3); border-radius: 10px;
+    padding: 14px; margin-bottom: 14px;
+  }
+
+  /* Left: camera + captions */
+  .left-col { width: 300px; flex-shrink: 0; border-right: 1px solid var(--navy-3); }
+  #localVideo { width: 100%; border-radius: 8px; background: #000; display: block; }
+  #joinBtn {
+    width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; border: none;
+    background: var(--samsung-blue-bright); color: #fff; font-weight: 600; cursor: pointer; font-size: 14px;
+  }
+  #joinBtn:disabled { background: var(--navy-3); color: var(--text-dim); cursor: default; }
+  #connStatus { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+  #captions { font-size: 13px; line-height: 1.5; min-height: 60px; color: var(--text); }
+  #captions .interim { color: var(--text-dim); font-style: italic; }
+
+  /* Center: pipeline */
+  .center-col { flex: 1; display: flex; flex-direction: column; padding: 20px; min-width: 0; }
+  .pipeline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 24px; }
+  .stage {
+    background: var(--navy-2); border: 2px solid var(--navy-3); border-radius: 10px;
+    padding: 14px 16px; min-width: 100px; text-align: center; transition: all 0.25s ease;
+  }
+  .stage .name { font-size: 12px; font-weight: 600; }
+  .stage .ms { font-size: 11px; color: var(--text-dim); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .stage.lit { border-color: var(--samsung-blue-bright); background: var(--navy-3);
+    box-shadow: 0 0 16px rgba(59, 91, 255, 0.45); }
+  .stage.lit .ms { color: var(--samsung-blue-bright); font-weight: 700; }
+  .arrow { color: var(--navy-3); font-size: 18px; }
+
+  .timeline-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .timeline {
+    flex: 1; overflow-y: auto; background: var(--navy-1); border: 1px solid var(--navy-3);
+    border-radius: 10px; padding: 14px; font-size: 13px; line-height: 1.9;
+  }
+  .timeline .turn { margin-bottom: 10px; }
+  .timeline .turn .filler { color: var(--grey); }
+  .timeline .strike { color: var(--red); text-decoration: line-through; opacity: 0.7; }
+  .timeline .corrected-to { color: var(--green); font-weight: 600; }
+  .timeline .meta { color: var(--text-dim); font-size: 11px; }
+
+  /* Right: state + commit gate */
+  .right-col { width: 300px; flex-shrink: 0; border-left: 1px solid var(--navy-3); }
+  .gate-item {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+    background: var(--navy-2); margin-bottom: 6px; font-size: 12px;
+  }
+  .gate-item .badge {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .badge.pending { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .badge.blocked { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .badge.executed { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .gate-item .tool { font-weight: 600; flex: 1; }
+  .gate-item .reason { color: var(--text-dim); font-size: 11px; }
+  .stat-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; color: var(--text-dim); }
+  .stat-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 24px; background: var(--navy-1); border-top: 1px solid var(--navy-3);
+    font-size: 12px; color: var(--text-dim);
+  }
+  #dupCounter { color: var(--green); font-weight: 700; }
+  #dupCounter.has-dups { color: var(--red); }
+
+  /* Results tab */
+  .results-view { flex-direction: column; padding: 24px; overflow-y: auto; gap: 20px; }
+  .results-view .warn {
+    background: rgba(239, 68, 68, 0.12); border: 1px solid var(--red); border-radius: 8px;
+    padding: 12px 16px; font-size: 13px; color: #fca5a5;
+  }
+  .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .chart-card { background: var(--navy-1); border: 1px solid var(--navy-3); border-radius: 10px; padding: 16px; }
+  .chart-card h3 { font-size: 13px; margin: 0 0 12px 0; color: var(--text-dim); font-weight: 600; }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+  .bar-row .label { width: 70px; flex-shrink: 0; color: var(--text-dim); }
+  .bar-track { flex: 1; height: 16px; background: var(--navy-2); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-fill.ours { background: var(--samsung-blue-bright); }
+  .bar-fill.baseline { background: var(--grey); }
+  .bar-row .val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="dot"></span> SentinelEdge — Device Support Agent</h1>
+  <div class="tabs">
+    <button class="tab-btn active" data-view="live">Live</button>
+    <button class="tab-btn" data-view="results">Results</button>
+  </div>
+  <div id="latencyBadge">turn latency: <span class="val" id="latencyVal">—</span></div>
+</header>
+
+<main>
+  <div class="view active" id="view-live">
+    <div class="col left-col">
+      <h2>Camera</h2>
+      <video id="localVideo" autoplay muted playsinline></video>
+      <button id="joinBtn">Join with mic + camera</button>
+      <div id="connStatus">Not connected</div>
+      <h2 style="margin-top:18px;">Captions</h2>
+      <div class="panel"><div id="captions">—</div></div>
+    </div>
+
+    <div class="center-col">
+      <div class="pipeline" id="pipeline"></div>
+      <div class="timeline-wrap">
+        <h2>Correction timeline</h2>
+        <div class="timeline" id="timeline"></div>
+      </div>
+    </div>
+
+    <div class="col right-col">
+      <h2>State</h2>
+      <div class="panel" id="statePanel">
+        <div class="stat-row">Turns <b id="statTurns">0</b></div>
+        <div class="stat-row">Tool calls executed <b id="statExecuted">0</b></div>
+        <div class="stat-row">Corrections caught <b id="statCorrections">0</b></div>
+        <div class="stat-row">Blocked duplicates <b id="statBlocked">0</b></div>
+      </div>
+      <h2>Commit gate</h2>
+      <div class="panel" id="gatePanel" style="max-height: 340px; overflow-y: auto;">
+        <div style="color: var(--text-dim); font-size: 12px;">No activity yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view results-view" id="view-results">
+    <div class="warn" id="resultsWarn"></div>
+    <div class="chart-grid" id="chartGrid"></div>
+  </div>
+</main>
+
+<footer>
+  <span>Zero duplicate actions: <span id="dupCounter">0 blocked</span></span>
+  <span>FDB-v3 · Samsung PRISM Gen AI Hackathon 3.0 · Theme 5</span>
+</footer>
+
+<script>
+const PIPELINE_STAGES = ["Mic", "Transcript", "Correction Resolver", "Reasoning", "Commit Gate", "Tools", "Reply"];
+const pipelineEl = document.getElementById('pipeline');
+PIPELINE_STAGES.forEach((name, i) => {
+  const stage = document.createElement('div');
+  stage.className = 'stage';
+  stage.id = 'stage-' + i;
+  stage.innerHTML = `<div class="name">${name}</div><div class="ms">—</div>`;
+  pipelineEl.appendChild(stage);
+  if (i < PIPELINE_STAGES.length - 1) {
+    const arrow = document.createElement('div');
+    arrow.className = 'arrow';
+    arrow.textContent = '→';
+    pipelineEl.appendChild(arrow);
+  }
+});
+
+function lightStage(i, ms) {
+  const el = document.getElementById('stage-' + i);
+  el.classList.add('lit');
+  if (ms !== undefined && ms !== null) el.querySelector('.ms').textContent = ms.toFixed(0) + ' ms';
+  setTimeout(() => el.classList.remove('lit'), 2200);
+}
+function resetStages() {
+  PIPELINE_STAGES.forEach((_, i) => {
+    const el = document.getElementById('stage-' + i);
+    el.classList.remove('lit');
+    el.querySelector('.ms').textContent = '—';
+  });
+}
+
+const stats = { turns: 0, executed: 0, corrections: 0, blocked: 0 };
+function renderStats() {
+  document.getElementById('statTurns').textContent = stats.turns;
+  document.getElementById('statExecuted').textContent = stats.executed;
+  document.getElementById('statCorrections').textContent = stats.corrections;
+  document.getElementById('statBlocked').textContent = stats.blocked;
+  const dup = document.getElementById('dupCounter');
+  dup.textContent = stats.blocked + ' blocked';
+  dup.className = stats.blocked > 0 ? 'has-dups' : '';
+}
+
+const gatePanel = document.getElementById('gatePanel');
+let gateFirstItem = true;
+function addGateItem(kind, tool, reason) {
+  if (gateFirstItem) { gatePanel.innerHTML = ''; gateFirstItem = false; }
+  const item = document.createElement('div');
+  item.className = 'gate-item';
+  item.innerHTML = `<span class="badge ${kind}"></span><span class="tool">${tool}</span>` +
+                   (reason ? `<span class="reason">${reason}</span>` : '');
+  gatePanel.prepend(item);
+  while (gatePanel.children.length > 30) gatePanel.removeChild(gatePanel.lastChild);
+}
+
+const timelineEl = document.getElementById('timeline');
+function addTimelineEntry(html) {
+  const div = document.createElement('div');
+  div.className = 'turn';
+  div.innerHTML = html;
+  timelineEl.prepend(div);
+}
+
+function handleGateEvent(msg) {
+  switch (msg.event) {
+    case 'buffered':
+      lightStage(4, msg.buffer_ms); // Commit Gate
+      addGateItem('pending', msg.tool, 'buffered ' + msg.buffer_ms + 'ms');
+      break;
+    case 'superseded':
+      stats.corrections++; renderStats();
+      lightStage(2); // Correction Resolver
+      addTimelineEntry(
+        `<span class="strike">${msg.tool}(${JSON.stringify(msg.old_args)})</span> ` +
+        `<span class="meta">superseded before it ever ran</span>`);
+      break;
+    case 'resolver_corrected_arg':
+      stats.corrections++; renderStats();
+      lightStage(2);
+      addTimelineEntry(
+        `${msg.tool}.${msg.arg}: <span class="strike">${msg.from_value}</span> → ` +
+        `<span class="corrected-to">${msg.to_value}</span>`);
+      break;
+    case 'executed':
+      stats.executed++; renderStats();
+      lightStage(5); // Tools
+      addGateItem('executed', msg.tool, 'executed');
+      break;
+    case 'blocked_duplicate':
+      stats.blocked++; renderStats();
+      addGateItem('blocked', msg.tool, 'duplicate — already executed this session');
+      break;
+    case 'confirmation_required':
+      addGateItem('blocked', msg.tool, 'awaiting explicit confirmation');
+      break;
+    case 'confirmed':
+      addGateItem('pending', msg.tool, 'confirmed by user');
+      break;
+    case 'resolver_correction_rejected':
+      addGateItem('blocked', msg.tool, 'correction rejected: ' + msg.reason);
+      break;
+  }
+}
+
+const latencyValEl = document.getElementById('latencyVal');
+function handleLatencyEvent(msg) {
+  switch (msg.stage) {
+    case 'turn_end':
+      stats.turns++; renderStats();
+      resetStages();
+      lightStage(0, 0); lightStage(1, 0); // Mic, Transcript
+      break;
+    case 'first_audio':
+      lightStage(6, msg.elapsed_ms); // Reply (ack)
+      latencyValEl.textContent = msg.elapsed_ms.toFixed(0) + ' ms';
+      break;
+    case 'tool_call':
+      lightStage(3, msg.elapsed_ms); // Reasoning (decision made)
+      break;
+    case 'answer':
+      lightStage(6, msg.elapsed_ms); // Reply (final)
+      latencyValEl.textContent = msg.elapsed_ms.toFixed(0) + ' ms';
+      break;
+  }
+}
+
+const captionsEl = document.getElementById('captions');
+function handleCaption(msg) {
+  captionsEl.innerHTML = msg.is_final
+    ? msg.text
+    : `<span class="interim">${msg.text}</span>`;
+}
+
+const decoder = new TextDecoder();
+function onDataReceived(payload, participant, kind, topic) {
+  let msg;
+  try { msg = JSON.parse(decoder.decode(payload)); } catch (e) { return; }
+  if (topic === 'gate') handleGateEvent(msg);
+  else if (topic === 'latency') handleLatencyEvent(msg);
+  else if (topic === 'captions') handleCaption(msg);
+}
+
+document.getElementById('joinBtn').onclick = async () => {
+  document.getElementById('joinBtn').disabled = true;
+  const statusEl = document.getElementById('connStatus');
+  statusEl.textContent = 'Fetching token...';
+  const resp = await fetch('/token');
+  const { token, url } = await resp.json();
+
+  const room = new LivekitClient.Room();
+  room.on(LivekitClient.RoomEvent.DataReceived, onDataReceived);
+  room.on(LivekitClient.RoomEvent.Disconnected, () => statusEl.textContent = 'Disconnected');
+
+  statusEl.textContent = 'Connecting...';
+  await room.connect(url, token);
+  statusEl.textContent = 'Connected — enabling mic + camera...';
+
+  await room.localParticipant.setMicrophoneEnabled(true);
+  await room.localParticipant.setCameraEnabled(true, {
+    resolution: { width: 320, height: 240, frameRate: 1 },
+  });
+  const camPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
+  if (camPub && camPub.track) camPub.track.attach(document.getElementById('localVideo'));
+
+  statusEl.textContent = 'Live — talk to the agent now.';
+};
+
+// --- tabs ---
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+  };
+});
+
+// --- results tab: static snapshot from results/OVERNIGHT_REPORT.md, regenerate RESULTS_DATA
+// below by re-running that report and copying its head-to-head numbers. Baseline is flagged
+// incomplete per the report's own warning banner — never presented as a real comparison.
+const RESULTS_DATA = {
+  baselineIncomplete: true,
+  metrics: [
+    { label: 'Turn-take', ours: 99.0, baseline: 0.0 },
+    { label: 'Tool sel.', ours: 86.4, baseline: null },
+    { label: 'Arg acc.', ours: 42.3, baseline: null },
+    { label: 'Pass@1', ours: 29.0, baseline: 0.0 },
+  ],
+};
+function renderResults() {
+  const warn = document.getElementById('resultsWarn');
+  warn.textContent = RESULTS_DATA.baselineIncomplete
+    ? '⚠️ Baseline run is incomplete (stalled ~4.5h before being caught, stopped short of ' +
+      '100/100 rather than restarted without asking). Baseline bars are not a real measurement ' +
+      '— shown only where it has any completed data at all.'
+    : '';
+  const grid = document.getElementById('chartGrid');
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  card.innerHTML = '<h3>Ours vs. Baseline (exact-match)</h3>';
+  RESULTS_DATA.metrics.forEach(m => {
+    const row = (label, val, cls) => {
+      const pct = val === null ? 0 : val;
+      return `<div class="bar-row"><span class="label">${label}</span>
+        <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+        <span class="val">${val === null ? 'n/a' : val.toFixed(1) + '%'}</span></div>`;
+    };
+    card.innerHTML += `<div style="margin-bottom:14px;"><div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">${m.label}</div>` +
+      row('ours', m.ours, 'ours') + row('base', m.baseline, 'baseline') + `</div>`;
+  });
+  grid.appendChild(card);
+}
+renderResults();
+</script>
+</body>
+</html>

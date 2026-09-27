@@ -216,10 +216,24 @@ async def entrypoint(ctx: agents.JobContext):
         stager.on_tool_committed()
         session.say(random.choice(ACK_PHRASES), allow_interruptions=True)
 
+    def on_gate_event(event: str, entry: dict) -> None:
+        """Streams every commit-gate log entry (buffered/superseded/executed/blocked_duplicate/
+        confirmation_required/confirmed/resolver_corrected_arg/...) to the dashboard's
+        commit-gate panel and correction timeline. Never affects agent behavior — publish
+        failures are swallowed, same policy as LatencyStager._publish."""
+        payload = json.dumps({"event": event, **{k: v for k, v in entry.items()
+                                                 if k != "event"}},
+                             default=str).encode("utf-8")
+        try:
+            asyncio.ensure_future(
+                ctx.room.local_participant.publish_data(payload, reliable=True, topic="gate"))
+        except Exception:
+            pass
+
     gate = CommitGate(call_tool=lambda name, args: registry.call(name, **args),
                       tool_kinds=TOOL_KINDS, tool_schemas=TOOL_SCHEMAS,
                       buffer_ms=COMMIT_BUFFER_MS, confirm_required=CONFIRM_REQUIRED,
-                      on_committed=on_committed)
+                      on_committed=on_committed, on_event=on_gate_event)
 
     fnc_ctx = DeviceAssistantFnc(turn, gate, ctx.room.name)
     tools = llm.find_function_tools(fnc_ctx)
@@ -227,7 +241,16 @@ async def entrypoint(ctx: agents.JobContext):
 
     @session.on("user_input_transcribed")
     def on_user_input(msg: agents.voice.UserInputTranscribedEvent):
-        turn.append(getattr(msg, "transcript", "") or "")
+        text = getattr(msg, "transcript", "") or ""
+        turn.append(text)
+        payload = json.dumps({"text": text,
+                             "is_final": getattr(msg, "is_final", True)}).encode("utf-8")
+        try:
+            asyncio.ensure_future(
+                ctx.room.local_participant.publish_data(payload, reliable=True,
+                                                        topic="captions"))
+        except Exception:
+            pass
 
     @session.on("agent_state_changed")
     def on_agent_state(ev: agents.voice.AgentStateChangedEvent):

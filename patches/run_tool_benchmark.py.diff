@@ -1,15 +1,17 @@
-﻿# REASON: harness reliability only; no scoring logic changed. (1) Adds a real subprocess
-# timeout to the per-example inference call — previously unbounded, so a dead/unresponsive
+# REASON: harness reliability only; no scoring logic changed. (1) Adds a real subprocess
+# timeout to the per-example inference call -- previously unbounded, so a dead/unresponsive
 # agent hung the whole batch forever with no way to recover. (2) Adds infer_only (skip ASR,
-# write status="awaiting_scoring") to support running all inference first and scoring
-# separately, so NeMo's CPU-heavy transcription never runs while the agent is live accepting
-# job dispatches (the two together are the fix for the reliability problem in (1)/lk_agent_tool
-# diff). (3) Fixes a genuine pre-existing bug in the ALREADY-SHIPPED --asr-only re-scoring mode:
-# room_name/stream_start_time (needed for tool-call telemetry) were never restored from a prior
-# result file, so any --asr-only re-run — with or without this session's two-phase split —
-# would have silently returned empty actual_tool_calls for every scenario.
+# write status=awaiting_scoring) to support running all inference first and scoring
+# separately, so NeMos CPU-heavy transcription never runs while the agent is live accepting
+# job dispatches. (3) Fixes a genuine pre-existing bug in the ALREADY-SHIPPED --asr-only
+# re-scoring mode: room_name/stream_start_time were never restored from a prior result file, so
+# any --asr-only re-run would have silently returned empty actual_tool_calls for every scenario.
+# (4) Fixes hasattr(model, cuda) unconditionally crashing on any CPU-only machine (true for
+# any PyTorch model regardless of CUDA availability) -- now checks torch.cuda.is_available().
+# (5) Threads an optional agent_name through to run_livekit_inference/livekit_inference.py for
+# explicit LiveKit dispatch (see livekit_inference.py.diff).
 diff --git a/v3/run_tool_benchmark.py b/v3/run_tool_benchmark.py
-index 8a92b70..6ad235d 100755
+index 8a92b70..de4acd6 100755
 --- a/v3/run_tool_benchmark.py
 +++ b/v3/run_tool_benchmark.py
 @@ -41,6 +41,11 @@ from pathlib import Path
@@ -38,9 +40,39 @@ index 8a92b70..6ad235d 100755
          model = model.cuda()
      print("✅ ASR model loaded")
      return model
-@@ -225,7 +235,11 @@ def run_livekit_inference(input_path, output_path, provider):
+@@ -211,10 +221,16 @@ def measure_latency_from_audio(input_path, output_path, silence_threshold_db=-40
+ # LiveKit Inference
+ # ==============================================================================
+ 
+-def run_livekit_inference(input_path, output_path, provider):
++def run_livekit_inference(input_path, output_path, provider, agent_name=None):
+     """
+     Stream input audio into a LiveKit room and record the agent's response
+     by calling livekit_inference.py as a subprocess.
++
++    agent_name, when set, requests EXPLICIT dispatch for that name (livekit_inference.py embeds
++    it in the room token) — the room can then only ever be picked up by a worker registered
++    under that exact name, never by any other agent that happens to be running (or being
++    manually tested) at the same time. When None (back-compat / not yet migrated for this
++    agent), the room uses anonymous dispatch as before.
+     """
+     import uuid
+     import subprocess
+@@ -223,22 +239,31 @@ def run_livekit_inference(input_path, output_path, provider):
+     print(f"  🔗 Streaming via livekit_inference.py into room: {room_name}")
+ 
      client_script = PROJECT_ROOT / "livekit_inference.py"
-     
+-    
++
++    cmd = [
++        sys.executable, str(client_script),
++        "-i", str(input_path),
++        "-o", str(output_path),
++        "--room", room_name,
++    ]
++    if agent_name:
++        cmd += ["--agent-name", agent_name]
++
      try:
 -        # Run the client script as a subprocess
 +        # Run the client script as a subprocess. timeout=INFERENCE_TIMEOUT_S is a reliability
@@ -49,10 +81,13 @@ index 8a92b70..6ad235d 100755
 +        # recover from — the overnight orchestrator's auto-restart depends on this call actually
 +        # returning so it can detect the failure and act on it.
          result = subprocess.run(
-             [
-                 sys.executable, str(client_script),
-@@ -235,10 +249,11 @@ def run_livekit_inference(input_path, output_path, provider):
-             ],
+-            [
+-                sys.executable, str(client_script),
+-                "-i", str(input_path),
+-                "-o", str(output_path),
+-                "--room", room_name
+-            ],
++            cmd,
              capture_output=True,
              text=True,
 -            check=True
@@ -65,7 +100,7 @@ index 8a92b70..6ad235d 100755
          # Parse STREAM_START_TIME
          stream_start_time = None
          for line in result.stdout.splitlines():
-@@ -248,8 +263,12 @@ def run_livekit_inference(input_path, output_path, provider):
+@@ -248,8 +273,12 @@ def run_livekit_inference(input_path, output_path, provider):
                  except:
                      pass
                  break
@@ -79,13 +114,13 @@ index 8a92b70..6ad235d 100755
      except subprocess.CalledProcessError as e:
          print(f"  ❌ livekit_inference.py failed with exit code {e.returncode}")
          return None, None
-@@ -277,8 +296,17 @@ def verify_search_answer(item, transcript):
+@@ -277,8 +306,17 @@ def verify_search_answer(item, transcript):
  # ==============================================================================
  
  def process_single(pid, example_id, input_path, provider, data, asr_model,
 -                   asr_only=False, force=False):
 -    """Process a single example through the full pipeline."""
-+                   asr_only=False, force=False, infer_only=False):
++                   asr_only=False, force=False, infer_only=False, agent_name=None):
 +    """Process a single example through the full pipeline.
 +
 +    infer_only=True stops right after Step 1 (inference), writing a status="awaiting_scoring"
@@ -99,7 +134,7 @@ index 8a92b70..6ad235d 100755
      item = data.get(example_id)
      if item is None:
          print(f"  ⚠️  Example {example_id} not found in data — skipping")
-@@ -289,10 +317,16 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
+@@ -289,10 +327,16 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
      output_path = example_dir / f"output_{provider}.wav"
      result_path = example_dir / f"result_{provider}.json"
  
@@ -119,7 +154,7 @@ index 8a92b70..6ad235d 100755
  
      result = {
          "pid": pid,
-@@ -303,6 +337,20 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
+@@ -303,6 +347,20 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
          "evaluated_at": datetime.datetime.now().isoformat(),
      }
  
@@ -140,7 +175,17 @@ index 8a92b70..6ad235d 100755
      # Step 1: Run inference (unless --asr-only)
      if not asr_only:
          if output_path.exists() and not force:
-@@ -331,6 +379,13 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
+@@ -311,7 +369,8 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
+             print(f"  🚀 Running LiveKit inference with provider={provider}...")
+             inference_start = time.time()
+             try:
+-                room_name, stream_start_time = run_livekit_inference(input_path, output_path, provider)
++                room_name, stream_start_time = run_livekit_inference(
++                    input_path, output_path, provider, agent_name=agent_name)
+                 inference_time = time.time() - inference_start
+                 result["inference_time_s"] = round(inference_time, 2)
+                 if not room_name:
+@@ -331,6 +390,13 @@ def process_single(pid, example_id, input_path, provider, data, asr_model,
                      json.dump(result, f, indent=2, ensure_ascii=False)
                  return result
  

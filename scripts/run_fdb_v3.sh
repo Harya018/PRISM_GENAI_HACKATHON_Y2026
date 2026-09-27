@@ -80,12 +80,14 @@ fi
 echo "== [5/7] Start the agent =="
 if [ "${MODE}" = "baseline" ]; then
   AGENT_SCRIPT="lk_agent_tool.py"          # FDB-v3's own stock template, unmodified
+  DISPATCH_NAME="fdb-baseline"             # must match its own @server.rtc_session(agent_name=...)
 else
   cp "${REPRO_ROOT}/agent/lk_agent.py" "${FDB_DIR}/v3/lk_agent_ours.py"
   cp "${REPRO_ROOT}/agent/commit_gate.py" "${FDB_DIR}/v3/commit_gate.py"
   cp "${REPRO_ROOT}/agent/resolver.py" "${FDB_DIR}/v3/resolver.py"
   cp "${REPRO_ROOT}/agent/instructions.py" "${FDB_DIR}/v3/instructions.py"
   AGENT_SCRIPT="lk_agent_ours.py"
+  DISPATCH_NAME="fdb-ours"                 # must match agent/lk_agent.py's own agent_name
 fi
 
 pushd "${FDB_DIR}/v3" > /dev/null
@@ -99,6 +101,7 @@ sleep 10
 echo "== [6/7] Run inference against all 100 scenarios (--infer-only: scoring happens after " \
      "the agent stops, never concurrently — patches/README.md) =="
 python3 run_tool_benchmark_all_released.py --provider "${PROVIDER}" --infer-only --force \
+  --agent-name "${DISPATCH_NAME}" \
   2>&1 | tee "${RESULTS_DIR}/inference.log"
 
 kill "${AGENT_PID}" 2>/dev/null || true

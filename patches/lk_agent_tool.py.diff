@@ -1,11 +1,17 @@
-﻿# REASON: harness reliability only; no scoring logic changed. Raises the LiveKit worker's
-# load_threshold and lowers num_idle_processes (its prod default is cpu_count() warm processes,
-# too heavy for this CPU-only dev machine) — observed cause of "job executor is unresponsive"
-# and the agent going silently unavailable mid-run. Does not touch the agent's own tool-calling
-# or response behavior; this is the STOCK baseline template, used unmodified for the comparison
-# in every other respect.
+# REASON: harness reliability only; no scoring logic changed. (1) AgentServer(load_threshold=
+# 0.95, num_idle_processes=1) -- default num_idle_processes is cpu_count() warm processes,
+# too heavy on this single CPU-only dev machine; caused the worker to go "unresponsive" and
+# silently stop accepting jobs mid-run. (2) Compatibility fix for current livekit-agents (1.8.x;
+# repo pins ~=1.3 which allows it): plugins now enforce "must be registered on the main thread"
+# and raise RuntimeError if imported lazily inside the per-job async entrypoint, as the original
+# code did -- import the one needed plugin eagerly at module load instead. (3) Explicit LiveKit
+# dispatch (agent_name="fdb-baseline") so this worker can only ever be assigned a room created
+# with --agent-name fdb-baseline (run_tool_benchmark.py), never a room meant for fdb-ours or
+# the extensions device-support even if all three happen to be running at once. This is the
+# STOCK baseline template in every other respect -- none of this changes its tool-calling or
+# response behavior.
 diff --git a/v3/lk_agent_tool.py b/v3/lk_agent_tool.py
-index 9788da4..bb06606 100644
+index 9788da4..b74028f 100644
 --- a/v3/lk_agent_tool.py
 +++ b/v3/lk_agent_tool.py
 @@ -132,6 +132,23 @@ PROVIDER = os.getenv("LK_PROVIDER", "grok")
@@ -93,7 +99,7 @@ index 9788da4..bb06606 100644
              voice=os.getenv("ULTRAVOX_VOICE", "Mark"),
          )
  
-@@ -393,7 +398,7 @@ class VoiceAgent(Agent):
+@@ -393,10 +398,13 @@ class VoiceAgent(Agent):
  # ---------------------------------------------------------------------------
  # Agent server & session
  # ---------------------------------------------------------------------------
@@ -101,4 +107,11 @@ index 9788da4..bb06606 100644
 +server = AgentServer(load_threshold=0.95, num_idle_processes=1)
  
  
- @server.rtc_session()
+-@server.rtc_session()
++@server.rtc_session(agent_name="fdb-baseline")
++# Explicit dispatch: only rooms created with --agent-name fdb-baseline (run_tool_benchmark.py)
++# are ever routed to this worker — it can never pick up a room meant for "fdb-ours" or the
++# extension's "device-support", even if all three happen to be running at the same time.
+ async def entrypoint(ctx: agents.JobContext):
+     with open("/tmp/agent_heartbeat.log", "a") as f:
+         f.write(f"!!! AGENT JOINING ROOM: {ctx.room.name} at {time.ctime()} !!!\n")
