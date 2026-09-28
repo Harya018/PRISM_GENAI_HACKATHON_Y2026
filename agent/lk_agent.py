@@ -39,7 +39,7 @@ except ImportError:
     registry = None
 
 from commit_gate import CommitGate
-from instructions import VOICE_AGENT_INSTRUCTIONS
+from instructions import VOICE_AGENT_INSTRUCTIONS, KEY_INFO_FIRST_ADDENDUM
 
 env_path = os.path.join(os.path.dirname(__file__), ".env.local")
 load_dotenv(env_path)
@@ -47,6 +47,13 @@ load_dotenv(env_path)
 PROVIDER = os.getenv("LK_PROVIDER", "gemini2_5")
 SILENCE_MS = int(os.getenv("LK_SILENCE_MS", "0")) or None   # None = provider default
 COMMIT_BUFFER_MS = float(os.getenv("LK_COMMIT_BUFFER_MS", "400"))
+
+# --- Latency-sweep flags (Step 1, all default OFF/unset = current/prior behavior) ---
+_THINKING_BUDGET_RAW = os.getenv("LK_THINKING_BUDGET")   # unset -> don't pass thinking_config
+                                                          # at all; "0"/"256"/"1024" -> that budget
+THINKING_BUDGET = int(_THINKING_BUDGET_RAW) if _THINKING_BUDGET_RAW is not None else None
+END_SPEECH_SENSITIVITY = os.getenv("LK_END_SPEECH_SENSITIVITY")   # unset|LOW|HIGH
+KEY_INFO_FIRST = os.getenv("LK_KEY_INFO_FIRST", "").lower() in ("1", "true", "yes")
 
 # same compatibility fix as the (locally patched) stock template: plugins must be registered on
 # the main thread in current livekit-agents — RESEARCH_FDB.md ss3.
@@ -103,13 +110,28 @@ TOOL_SCHEMAS = {
 def get_realtime_model():
     provider = PROVIDER.lower()
     realtime_input_config = None
-    if SILENCE_MS is not None and provider in ("gemini2_5", "gemini3_1"):
+    thinking_config = None
+    if provider in ("gemini2_5", "gemini3_1"):
         from google.genai import types
-        realtime_input_config = types.RealtimeInputConfig(
-            automatic_activity_detection=types.AutomaticActivityDetection(
-                silence_duration_ms=SILENCE_MS,
-            ),
-        )
+
+        aad_kwargs = {}
+        if SILENCE_MS is not None:
+            aad_kwargs["silence_duration_ms"] = SILENCE_MS
+        if END_SPEECH_SENSITIVITY in ("LOW", "HIGH"):
+            aad_kwargs["end_of_speech_sensitivity"] = getattr(
+                types.EndSensitivity, f"END_SENSITIVITY_{END_SPEECH_SENSITIVITY}")
+        if aad_kwargs:
+            realtime_input_config = types.RealtimeInputConfig(
+                automatic_activity_detection=types.AutomaticActivityDetection(**aad_kwargs))
+
+        # L1: thinking_budget sweep (Step 1). include_thoughts=False always per the task's hard
+        # rule, regardless of budget -- we never want to stream/log the model's internal
+        # reasoning, only use it to decide how long it's allowed to spend before responding.
+        # LK_THINKING_BUDGET unset -> don't pass thinking_config at all (provider default,
+        # matches every run before this flag existed).
+        if THINKING_BUDGET is not None:
+            thinking_config = types.ThinkingConfig(include_thoughts=False,
+                                                   thinking_budget=THINKING_BUDGET)
 
     if provider == "grok":
         return _PLUGIN_MODULE.realtime.RealtimeModel(voice=os.getenv("XAI_VOICE", "Ara"))
@@ -121,12 +143,16 @@ def get_realtime_model():
                  "voice": os.getenv("GOOGLE_VOICE", "Puck")}
         if realtime_input_config is not None:
             kwargs["realtime_input_config"] = realtime_input_config
+        if thinking_config is not None:
+            kwargs["thinking_config"] = thinking_config
         return _PLUGIN_MODULE.realtime.RealtimeModel(**kwargs)
     elif provider == "gemini3_1":
         kwargs = {"model": "gemini-3.1-flash-live-preview",
                  "voice": os.getenv("GOOGLE_VOICE", "Puck")}
         if realtime_input_config is not None:
             kwargs["realtime_input_config"] = realtime_input_config
+        if thinking_config is not None:
+            kwargs["thinking_config"] = thinking_config
         return _PLUGIN_MODULE.realtime.RealtimeModel(**kwargs)
     elif provider == "ultravox":
         return _PLUGIN_MODULE.realtime.RealtimeModel(voice=os.getenv("ULTRAVOX_VOICE", "Mark"))
@@ -263,7 +289,10 @@ class AssistantFnc:
 
 class VoiceAgent(Agent):
     def __init__(self) -> None:
-        super().__init__(instructions=VOICE_AGENT_INSTRUCTIONS)
+        instructions = VOICE_AGENT_INSTRUCTIONS
+        if KEY_INFO_FIRST:   # L2, flag-gated -- see instructions.py's KEY_INFO_FIRST_ADDENDUM
+            instructions = instructions + KEY_INFO_FIRST_ADDENDUM
+        super().__init__(instructions=instructions)
 
 
 server = AgentServer(load_threshold=0.95, num_idle_processes=1)

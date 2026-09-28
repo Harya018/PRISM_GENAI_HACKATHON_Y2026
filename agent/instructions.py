@@ -68,3 +68,20 @@ other value that should have come from an earlier result.
 
 Never call a tool a second time with the same effect once it has already succeeded — if you are
 unsure whether something already happened, say what you know rather than repeating the action."""
+
+
+# L2 (Step 1, task/latency spec): key-info-first spoken answers. Flag-gated via LK_KEY_INFO_FIRST
+# in lk_agent.py -- appended to VOICE_AGENT_INSTRUCTIONS only when that env var is set, so the
+# base instructions above (already scored on the last valid full-100 run) stay unchanged unless
+# this specifically wins on the dev subset. Targets the "last tool result -> first agent audio"
+# latency stage from results/LATENCY_BREAKDOWN.md by cutting preamble, not by rushing the turn-
+# taking judgment the rest of the instructions establish above.
+KEY_INFO_FIRST_ADDENDUM = """
+
+SPOKEN ANSWERS, ONCE YOU HAVE A TOOL RESULT: your first sentence must state the concrete result —
+the id, amount, date, status, or other value the user asked for — with no preamble ("Sure, let me
+check that", "Great question", "Okay, I've got it"). Say the answer, then anything else useful
+after it. One short sentence per completed action; if you did more than one thing, state each
+result plainly in the order you did them. This does not change when you're allowed to speak —
+you still wait for the turn to genuinely end first — it only changes what the first words are
+once you do."""
