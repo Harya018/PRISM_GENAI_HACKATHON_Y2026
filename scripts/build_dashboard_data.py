@@ -27,22 +27,28 @@ labelled below and in the UI; it is a real, from-data computation, not a fabrica
 it is NOT the same number the official 100-scenario aggregate reports (which are used as-is for
 the "ours full-100" headline).
 
-Usage: python scripts/build_dashboard_data.py
-Writes: docs/dashboard_data.json
+Usage:
+  python scripts/build_dashboard_data.py
+  python scripts/build_dashboard_data.py --fdb-root /path/to/your/Full-Duplex-Bench/v3 \
+      --provider-ours my_agent_full --provider-baseline stock_template_full \
+      --commit-gate-buffer-ms 250 --out docs/dashboard_data.json
+
+  The two --provider-* values are the FDB-v3 `--provider` names you evaluated with (i.e. the
+  `{provider}` in `result_{provider}.json` / `{provider}_toolcalls_exact.json`) -- run your own
+  agent and a comparison baseline through the SAME evaluate_tool_calls.py/evaluate_pass_rate.py
+  pipeline first (see README "Running with your own benchmark"), then point this script at them.
+  The dashboard itself (dashboard.html) always calls the two sides "ours"/"baseline" regardless
+  of your actual provider names -- only the underlying files are looked up by name.
+Writes: docs/dashboard_data.json (or --out)
 """
+import argparse
 import json
 import re
 import statistics
 from pathlib import Path
 
-FDB_ROOT = Path(__file__).resolve().parent.parent.parent / "Full-Duplex-Bench" / "v3"
-DATA_DIR = FDB_ROOT / "fdb_v3_data_released"
-RESULTS_DIR = FDB_ROOT / "results"
-BENCHMARK_JSON = FDB_ROOT / "benchmark_data_v2.json"
-OUT_PATH = Path(__file__).resolve().parent.parent / "docs" / "dashboard_data.json"
-
-COMMIT_GATE_BUFFER_MS = 400  # LK_COMMIT_BUFFER_MS, fixed per-run config for "ours" (see
-# overnight_runner.py's AgentHandle.start()) -- not a per-call measured value.
+_DEFAULT_FDB_ROOT = Path(__file__).resolve().parent.parent.parent / "Full-Duplex-Bench" / "v3"
+_DEFAULT_OUT = Path(__file__).resolve().parent.parent / "docs" / "dashboard_data.json"
 
 _FOLDER_RE = re.compile(r"^(.+)_([0-9a-f]{24})$")
 
@@ -51,16 +57,19 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _scenario_meta() -> dict:
-    data = _load(BENCHMARK_JSON)
+def _scenario_meta(benchmark_json: Path) -> dict:
+    data = _load(benchmark_json)
     scenarios = data.get("scenarios", data) if isinstance(data, dict) else data
     return {s["id"]: s for s in scenarios}
 
 
-def _all_folders() -> list:
-    """[(folder_name, example_id, pid)] for all 100 recordings."""
+def _all_folders(data_dir: Path) -> list:
+    """[(folder_name, example_id, pid)] for every recording under data_dir. The
+    `{example_id}_{24-hex}` naming and 24-hex "pid" suffix are FDB-v3's own released-data
+    convention (run_tool_benchmark_all_released.py's _FOLDER_RE) -- if your own benchmark uses a
+    different folder-naming scheme, adjust this regex to match it."""
     out = []
-    for d in sorted(DATA_DIR.iterdir()):
+    for d in sorted(data_dir.iterdir()):
         if not d.is_dir():
             continue
         m = _FOLDER_RE.match(d.name)
@@ -69,8 +78,8 @@ def _all_folders() -> list:
     return out
 
 
-def _raw_result(folder_name: str, provider: str) -> dict | None:
-    rf = DATA_DIR / folder_name / f"result_{provider}.json"
+def _raw_result(data_dir: Path, folder_name: str, provider: str) -> dict | None:
+    rf = data_dir / folder_name / f"result_{provider}.json"
     if not rf.exists():
         return None
     try:
@@ -107,12 +116,35 @@ def _avg(values: list) -> float | None:
     return round(statistics.fmean(values), 4) if values else None
 
 
-def main():
-    meta = _scenario_meta()
-    folders = _all_folders()  # 100 (example_id, pid) recordings
+def _parse_args():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--fdb-root", type=Path, default=_DEFAULT_FDB_ROOT,
+                  help="Full-Duplex-Bench v3 checkout root (contains benchmark_data_v2.json, "
+                       "fdb_v3_data_released/, results/). Default: ../../Full-Duplex-Bench/v3")
+    p.add_argument("--provider-ours", default="ours_full",
+                  help="FDB-v3 --provider name your agent's run used (default: ours_full)")
+    p.add_argument("--provider-baseline", default="baseline_full",
+                  help="FDB-v3 --provider name your comparison run used (default: baseline_full)")
+    p.add_argument("--commit-gate-buffer-ms", type=float, default=400,
+                  help="Your CommitGate's buffer_ms / LK_COMMIT_BUFFER_MS (default: 400, "
+                       "matching this submission's own run)")
+    p.add_argument("--out", type=Path, default=_DEFAULT_OUT,
+                  help="Output path for the dashboard data JSON")
+    return p.parse_args()
 
-    ours_tc = _load(RESULTS_DIR / "ours_full_toolcalls_exact.json")
-    ours_pr = _load(RESULTS_DIR / "ours_full_pass_rate_exact.json")
+
+def main():
+    args = _parse_args()
+    data_dir = args.fdb_root / "fdb_v3_data_released"
+    results_dir = args.fdb_root / "results"
+    benchmark_json = args.fdb_root / "benchmark_data_v2.json"
+    provider_ours, provider_baseline = args.provider_ours, args.provider_baseline
+
+    meta = _scenario_meta(benchmark_json)
+    folders = _all_folders(data_dir)
+
+    ours_tc = _load(results_dir / f"{provider_ours}_toolcalls_exact.json")
+    ours_pr = _load(results_dir / f"{provider_ours}_pass_rate_exact.json")
 
     ours_full = {
         "n": len(folders),
@@ -139,8 +171,8 @@ def main():
         m = meta.get(example_id)
         if m is None:
             continue
-        ours_raw = _raw_result(folder_name, "ours_full") or {}
-        base_raw = _raw_result(folder_name, "baseline_full")
+        ours_raw = _raw_result(data_dir, folder_name, provider_ours) or {}
+        base_raw = _raw_result(data_dir, folder_name, provider_baseline)
         expected = m.get("expected_tool_calls", [])
 
         ours_actual = ours_raw.get("actual_tool_calls", [])
@@ -222,7 +254,7 @@ def main():
         "preemptive_calls_note": "A call whose timestamp_start precedes the user's own "
             "speech-end (user_speech_end_rel in the raw result) -- derived directly from "
             "recorded timestamps.",
-        "buffer_ms_configured": COMMIT_GATE_BUFFER_MS,
+        "buffer_ms_configured": args.commit_gate_buffer_ms,
         "note": "Per-call buffered/superseded/duplicate-blocked counts are not available for "
             "this already-scored run: commit_gate.py's on_event hook is additive and was kept "
             "extension-only under the code freeze, so it was never wired into the benchmark "
@@ -246,18 +278,18 @@ def main():
             "gpt-4o-judged results.",
             "Common-51 tool-selection numbers use a simplified recall x precision score computed "
             "per recording (see note in common51 above), not the official continuous scorer.",
-            "Baseline coverage is 51/100 recordings (its original run stalled and was stopped "
-            "short rather than restarted without asking); domains_missing above have zero "
-            "baseline data.",
-            "Cross-turn corrections that arrive after a long pause, in a separate turn from the "
-            "one that made the call, remain a known failure mode -- see README Limitations.",
+            f"Baseline coverage is {len(common_rows)}/{len(rows)} recordings; domains_missing "
+            "above have zero baseline data." + (
+                "" if len(common_rows) == len(rows) else
+                " (Edit this line's underlying cause in your own README if it's not the same "
+                "'stalled run, stopped rather than restarted' story as this submission's.)"),
         ],
         "examples": rows,
     }
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(f"Wrote {OUT_PATH} ({len(rows)} recordings, common51.n={common51['n']})")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    print(f"Wrote {args.out} ({len(rows)} recordings, common51.n={common51['n']})")
 
 
 if __name__ == "__main__":

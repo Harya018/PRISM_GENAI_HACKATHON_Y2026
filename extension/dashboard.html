@@ -89,10 +89,19 @@
 
   #captions { font-size: 13px; line-height: 1.7; max-height: 260px; overflow-y: auto; }
   #captions .row { margin-bottom: 6px; }
+  #captions .row.interim { color: var(--muted); font-style: italic; }
   #captions .who { font-weight: 600; font-size: 11px; text-transform: uppercase; margin-right: 6px; }
   #captions .who.user { color: var(--info); }
   #captions .who.agent { color: var(--blue-glow); }
   #captions .empty { color: var(--muted); font-style: italic; }
+  /* thin dark-themed scrollbar (conversation panel + anywhere else scrollable) */
+  #captions, .timeline, .col, #gatePanel, #view-results, #view-explorer, #view-architecture { scrollbar-width: thin; scrollbar-color: var(--blue-glow) var(--border); }
+  #captions::-webkit-scrollbar, .timeline::-webkit-scrollbar, .col::-webkit-scrollbar,
+  #gatePanel::-webkit-scrollbar, #view-results::-webkit-scrollbar, #view-explorer::-webkit-scrollbar { width: 8px; }
+  #captions::-webkit-scrollbar-track, .timeline::-webkit-scrollbar-track, .col::-webkit-scrollbar-track,
+  #gatePanel::-webkit-scrollbar-track { background: var(--border); border-radius: 4px; }
+  #captions::-webkit-scrollbar-thumb, .timeline::-webkit-scrollbar-thumb, .col::-webkit-scrollbar-thumb,
+  #gatePanel::-webkit-scrollbar-thumb { background: var(--blue-glow); border-radius: 4px; }
 
   .pipeline { display: flex; align-items: stretch; gap: 4px; flex-wrap: nowrap; margin-bottom: 16px; overflow-x: auto; }
   .stage {
@@ -461,14 +470,25 @@ function handleLatencyEvent(msg) {
 
 const captionsEl = document.getElementById('captions');
 let captionsFirst = true;
+// One in-progress DOM row per speaker: interim (is_final=false) events update it in place;
+// is_final=true finalizes its styling and clears the slot so the NEXT event for that speaker
+// starts a fresh row, instead of appending a new line per interim revision.
+const captionRows = { user: null, agent: null };
 function handleCaption(msg) {
   if (captionsFirst) { captionsEl.innerHTML = ''; captionsFirst = false; }
-  const row = document.createElement('div');
-  row.className = 'row';
   const who = msg.speaker === 'agent' ? 'agent' : 'user';
-  row.innerHTML = `<span class="who ${who}">${who}</span>${msg.text}`;
-  captionsEl.appendChild(row);
+  let row = captionRows[who];
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<span class="who ${who}">${who}</span><span class="text"></span>`;
+    captionsEl.appendChild(row);
+  }
+  row.classList.toggle('interim', !msg.is_final);
+  row.querySelector('.text').textContent = msg.text;
+  captionRows[who] = msg.is_final ? null : row;
   captionsEl.scrollTop = captionsEl.scrollHeight;
+
   if (who === 'user') setStage(1, 'active', msg.text.split(' ').slice(-6).join(' '));
   else {
     setStage(6, 'active', msg.text.split(' ').slice(0, 6).join(' '));

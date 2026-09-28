@@ -176,8 +176,7 @@
   "limitations": [
     "The exact-match scorer used for the full-100 'ours' numbers above is stricter than FDB-v3's official gpt-4o-judged scorer -- not directly comparable to any published gpt-4o-judged results.",
     "Common-51 tool-selection numbers use a simplified recall x precision score computed per recording (see note in common51 above), not the official continuous scorer.",
-    "Baseline coverage is 51/100 recordings (its original run stalled and was stopped short rather than restarted without asking); domains_missing above have zero baseline data.",
-    "Cross-turn corrections that arrive after a long pause, in a separate turn from the one that made the call, remain a known failure mode -- see README Limitations."
+    "Baseline coverage is 51/100 recordings; domains_missing above have zero baseline data. (Edit this line's underlying cause in your own README if it's not the same 'stalled run, stopped rather than restarted' story as this submission's.)"
   ],
   "examples": [
     {

@@ -1,10 +1,43 @@
-# Theme 5 — FDB-v3 submission
+# SentinelEdge — Interruptible Device Support Agent
 
-Scored per `docs/Theme05_Participant_Guide_UPDATED_FBD.docx`: 60% organizers' re-run of
-[Full-Duplex-Bench v3](https://github.com/DanielLin94144/Full-Duplex-Bench) (FDB-v3) via
-`scripts/run_fdb_v3.sh`, 20% an extension use case, 20% documentation/architecture/video. Full
-technical background: `../RESEARCH_FDB.md`. Architecture, results, and the extension writeup land
-here as Phases 3–6 complete — this file currently covers environment setup only.
+**Theme 5 submission, Samsung PRISM Gen AI Hackathon 3.0.** A LiveKit voice agent for
+full-duplex, interruptible tool use — the kind of agent that has to keep listening while it
+talks and acts, so it can hear "actually, no — make that Berlin" and never have already called
+the tool for Paris.
+
+**The problem:** a realtime voice model can call a tool the instant it recognizes intent, before
+the user finishes a self-correction, a filler-filled pause, or a change of mind. Full-Duplex-Bench
+v3 (FDB-v3) scores exactly this — an "extra" call, even a read-only one that got corrected a
+moment later, fails the scenario outright.
+
+**The fix, in one sentence:** every proposed tool call is buffered for a short debounce window
+before it executes for real (`agent/commit_gate.py`), cross-checked against the turn's own
+transcript by a block-only resolver (`agent/resolver.py`) that only ever replaces a value the user
+explicitly corrected away, with idempotency and explicit-confirmation guards on top for
+state-changing actions.
+
+This repo has three parts:
+- **`agent/`** — the commit gate, resolver, and instructions submitted for the FDB-v3 benchmark
+  re-run (`scripts/run_fdb_v3.sh`, 60% of the grade).
+- **`extension/`** — a second, real-time demo use case built on the same commit gate/resolver: a
+  camera-grounded Samsung device-support assistant, with a live dashboard (screenshots below).
+- **`scripts/`, `patches/`** — the one-command reproduction pipeline and the harness-reliability
+  patches it applies to a stock FDB-v3 checkout (nothing here changes scoring logic).
+
+## Screenshots
+
+**Results** — every number read live from evaluation output, never hardcoded (see [Dashboard](#dashboard) below):
+![Results tab](docs/screenshots/results.png)
+
+**Benchmark Explorer** — inspect any of the 100 scored recordings, expected vs. actual tool calls:
+![Benchmark Explorer tab](docs/screenshots/explorer.png)
+
+**Architecture** — the pre-emptive-call problem and how the commit gate/resolver address it:
+![Architecture tab](docs/screenshots/architecture.png)
+
+**Live** — the seven-stage pipeline, correction timeline, and commit-gate feed (idle state shown;
+join with mic + camera at `http://localhost:8450` to see it light up):
+![Live tab](docs/screenshots/live_empty.png)
 
 ## Dashboard
 
@@ -78,6 +111,76 @@ cp .env.example .env   # fill in the table above
 
 Results, logs, the exact FDB-v3 commit, and pinned dependency versions land in
 `results/{baseline,ours}/<run_id>/`.
+
+## Running with your own benchmark, locally
+
+Everything here — the commit gate, the dashboard, `scripts/build_dashboard_data.py` — is written
+against **FDB-v3's own released data format and evaluator scripts**, not something bespoke to
+this submission's 100 examples. Point the same pipeline at your own scenarios and your own agent
+(or a different comparison baseline) and you get the same dashboard for them. There's no cloud
+dependency beyond LiveKit (for streaming audio to your agent during inference) and, optionally,
+an LLM judge — evaluation itself runs entirely on your machine.
+
+**1. Your benchmark data**, in `Full-Duplex-Bench/v3/`:
+- `benchmark_data_v2.json` — a JSON list, one object per scenario:
+  ```json
+  {
+    "id": "my_scenario_01", "domain": "my_domain", "difficulty": "easy",
+    "title": "Short human-readable title",
+    "dialogue": [{"user": "...", "ai": "..."}],
+    "disfluency_features": ["FILLER"],
+    "expected_tool_calls": [{"function": "my_tool", "args": {"key": "value"}}],
+    "num_expected_calls": 1, "state_rollback_test": false
+  }
+  ```
+- `fdb_v3_data_released/{scenario_id}_{24-hex-speaker-id}/` — one folder per recording:
+  `input.wav` (the user's spoken audio) + `metadata.json`. Multiple folders can share a
+  `scenario_id` if you record it with more than one speaker (this submission's own data does,
+  for 21 of its 100 — `build_dashboard_data.py`'s docstring explains why that mattered).
+- Your own tools: define them the same way `extension/mock_device_apis.py` does (a plain Python
+  registry the agent calls into) or however your agent already calls tools — FDB-v3 doesn't care,
+  it only ever sees `actual_tool_calls` in the recorded result.
+
+**2. Run inference** for your agent and a comparison baseline (from `Full-Duplex-Bench/v3/`,
+reusing FDB-v3's own batch runner unmodified):
+```bash
+python run_tool_benchmark_all_released.py --provider my_agent_full --infer-only \
+  --agent-name my-agent-dispatch-name     # while your LiveKit agent is running and registered
+                                           # under that same agent_name (explicit dispatch —
+                                           # see patches/livekit_inference.py.diff)
+python run_tool_benchmark_all_released.py --provider my_agent_full --asr-only   # score
+```
+Repeat with a second `--provider` name for whatever you're comparing against (a stock template,
+a previous version, another model).
+
+**3. Evaluate** both, naming the output files exactly `{provider}_toolcalls_exact.json` /
+`{provider}_pass_rate_exact.json` in `results/` — `build_dashboard_data.py` looks for those
+filenames specifically:
+```bash
+python evaluate_tool_calls.py --benchmark benchmark_data_v2.json --results-dir fdb_v3_data_released \
+  --provider my_agent_full --output results/my_agent_full_toolcalls_exact.json
+python evaluate_pass_rate.py --benchmark benchmark_data_v2.json --results-dir fdb_v3_data_released \
+  --provider my_agent_full --output results/my_agent_full_pass_rate_exact.json
+# repeat for your baseline provider name
+```
+(Add `--use-llm` with `OPENAI_API_KEY` set for the official gpt-4o judge, or `--proxy-llm` for
+the Gemini proxy judge, on both — otherwise these fall back to plain exact-match, which is what
+`build_dashboard_data.py` currently assumes for its own labelling; if you use a real judge,
+update that label where the script reads `evaluated_at`/`judge` from the report.)
+
+**4. Build the dashboard data and view it**, from `fdb-agent/`:
+```bash
+python scripts/build_dashboard_data.py \
+  --fdb-root /path/to/Full-Duplex-Bench/v3 \
+  --provider-ours my_agent_full --provider-baseline my_baseline_full \
+  --commit-gate-buffer-ms <your CommitGate's buffer_ms>
+python extension/web_client.py   # serves the dashboard at http://localhost:8450
+```
+Open `http://localhost:8450`, click **Results** or **Benchmark Explorer** — every number and
+every per-example row is read from the file you just built, nothing else needs to be running.
+The **Live** tab additionally needs your own agent process up and registered (see `extension/
+device_agent.py` for a worked example of wiring a LiveKit agent to the dashboard's data-channel
+events — `extension/EVENTS.md` documents the contract it expects).
 
 ## Changes to the benchmark harness
 

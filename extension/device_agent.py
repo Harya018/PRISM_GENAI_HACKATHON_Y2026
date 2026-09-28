@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 # duplicating or forking them for this extension.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from google.genai import types as genai_types
 from livekit import agents
 from livekit.agents import Agent, AgentServer, AgentSession, RoomInputOptions, llm
 from livekit.plugins import google
@@ -204,6 +205,13 @@ async def entrypoint(ctx: agents.JobContext):
     model = google.realtime.RealtimeModel(
         model="gemini-2.5-flash-native-audio-preview-12-2025",
         voice=os.getenv("GOOGLE_VOICE", "Puck"),
+        # Explicit English, both for the model's own responses (language=) and for input
+        # transcription script (input_audio_transcription=): without this, auto language
+        # detection was picking Hindi for an Indian accent and transcribing English speech in
+        # Devanagari script — found via a live test, not a hypothetical.
+        language=os.getenv("GOOGLE_LANGUAGE", "en-US"),
+        input_audio_transcription=genai_types.AudioTranscriptionConfig(
+            language_codes=[os.getenv("GOOGLE_LANGUAGE", "en-US")]),
     )
 
     turn = TurnTranscript()
@@ -239,12 +247,6 @@ async def entrypoint(ctx: agents.JobContext):
     tools = llm.find_function_tools(fnc_ctx)
     session = AgentSession(llm=model, tools=tools)
 
-    @session.on("user_input_transcribed")
-    def on_user_input(msg: agents.voice.UserInputTranscribedEvent):
-        # Only accumulates the turn transcript for the gate/resolver -- captions themselves are
-        # published from conversation_item_added below, which covers both speakers in one event.
-        turn.append(getattr(msg, "transcript", "") or "")
-
     def _publish(topic: str, payload: dict) -> None:
         data = json.dumps(payload, default=str).encode("utf-8")
         try:
@@ -253,23 +255,34 @@ async def entrypoint(ctx: agents.JobContext):
         except Exception:
             pass  # telemetry only -- never affect agent behavior
 
+    @session.on("user_input_transcribed")
+    def on_user_input(msg: agents.voice.UserInputTranscribedEvent):
+        text = getattr(msg, "transcript", "") or ""
+        is_final = getattr(msg, "is_final", True)
+        # Only append the CONFIRMED transcript to the turn buffer the gate/resolver sees --
+        # interim (is_final=False) revisions are the ASR's evolving best guess for the same
+        # utterance, not additional text; appending those too would garble turn.text with
+        # overlapping partial repeats (a real bug fixed here, not just a caption-UI one).
+        if is_final:
+            turn.append(text)
+        _publish("captions", {"speaker": "user", "text": text, "is_final": is_final,
+                             "t": time.time()})
+
     @session.on("conversation_item_added")
     def on_conversation_item(ev) -> None:
-        """Dashboard caption event {speaker, text, is_final, t} -- covers both user and agent
-        turns from one LiveKit Agents event, so the Live tab's caption feed and the pipeline's
-        'Reply' stage detail both have real text to show (additive; doesn't affect what the
-        agent hears or says)."""
+        """Agent-side caption {speaker: "agent", text, is_final: true, t} -- user captions come
+        from user_input_transcribed above (it has real interim/is_final data; this event doesn't
+        fire until an item is fully committed, so using it for the user side too would lose the
+        interim updates the dashboard needs). Additive; doesn't affect what the agent says."""
         item = ev.item
-        role = getattr(item, "role", "user")
+        if getattr(item, "role", None) != "assistant":
+            return
         content = getattr(item, "content", None)
-        if isinstance(content, list):
-            text = " ".join(c for c in content if isinstance(c, str))
-        else:
-            text = content or ""
+        text = " ".join(c for c in content if isinstance(c, str)) if isinstance(content, list) \
+            else (content or "")
         if not text:
             return
-        speaker = "agent" if role == "assistant" else "user"
-        _publish("captions", {"speaker": speaker, "text": text, "is_final": True,
+        _publish("captions", {"speaker": "agent", "text": text, "is_final": True,
                              "t": time.time()})
 
     @session.on("agent_state_changed")
