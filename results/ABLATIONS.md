@@ -1,7 +1,7 @@
-# Ablation table (dev subset, 25 examples, exact-match scoring)
+# Ablation table (dev subset, 25 recordings, official exact-match scorer)
 
-Every row filters the ALREADY-computed official evaluator output down to `results/dev_subset.txt`'s 25 scenario ids and re-averages -- never re-derives scoring logic. See `scripts/dev_subset_eval.py`.
+Each row runs the full pipeline (agent start -> smoke test -> 25-recording inference -> score -> official evaluate_tool_calls.py/evaluate_pass_rate.py, unmodified) against the isolated `dev_subset_data/` copy of exactly the 25 recordings in `results/dev_subset.txt`. See `scripts/run_dev_sweep_run.py` and `scripts/dev_subset_eval.py`.
 
-| Config | Tool-sel | Arg acc (exact) | Pass@1 | Latency mean/median (s) | Interruption | Turn-take | N (recordings) |
+| Config | Tool-sel | Arg acc (exact) | Pass@1 | Latency mean/median (s) | Interruption | Turn-take | N |
 |---|---|---|---|---|---|---|---|
-| baseline (current defaults, 400ms buffer) | 76.4% | 51.2% | 37.0% | 11.84/9.72 | 7.7% | 96.3% | 27 (20 unique ids, 5 of the 25 have no recording) |
+| R1: baseline-A (current defaults) | 77.3% | 25.9% | 8.0% | 11.44/9.92 | 11.1% | 72.0% | 25 |

@@ -4,6 +4,12 @@ computed entirely from our own recorded outputs -- timestamps, actual_tool_calls
 agent's own output transcript (asr_chunks). Never reads metadata.json, expected_tool_calls, or
 input_transcript (integrity rule: measurement must not use ground truth).
 
+dev_subset.txt holds 25 RECORDING FOLDER NAMES (every 4th of the 100 sorted folders under
+fdb_v3_data_released), not scenario ids -- fixed after the first version sampled scenario ids,
+5 of which had zero recordings at all (21 of the 100 defined scenarios were never released as
+audio), and scenario ids are ambiguous anyway (21 of the 79 released scenario ids have TWO
+recordings from different speakers). Folder names are always unambiguous and always exist.
+
 Stages (all relative, seconds):
   1. user_speech_end -> first_tool_call   : actual_tool_calls[0].timestamp_start - user_speech_end_rel
   2. tool_call -> tool_result             : sum(timestamp_end - timestamp_start) over all calls
@@ -34,8 +40,10 @@ import statistics
 from pathlib import Path
 
 FDB_ROOT = Path(__file__).resolve().parent.parent.parent / "Full-Duplex-Bench" / "v3"
-DATA_DIR = FDB_ROOT / "fdb_v3_data_released"          # raw per-example data (external, not
-FDB_RESULTS_DIR = FDB_ROOT / "results"                # committed to this submission's git repo)
+FULL_DATA_DIR = FDB_ROOT / "fdb_v3_data_released"     # all 100 recordings (external)
+DEV_DATA_DIR = FDB_ROOT / "dev_subset_data"           # isolated copy of just the 25 dev
+                                                       # recordings, used by the sweep runs
+FDB_RESULTS_DIR = FDB_ROOT / "results"                # official evaluator output (external)
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"   # our own deliverables --
 # dev_subset.txt / LATENCY_BREAKDOWN.md live here so they're part of the committed submission,
 # not the gitignored Full-Duplex-Bench clone.
@@ -46,16 +54,8 @@ def _tokens(value) -> list:
     return re.findall(r"[a-zA-Z0-9]+", str(value).lower())
 
 
-def _example_dir(example_id: str) -> Path | None:
-    matches = list(DATA_DIR.glob(f"{example_id}_*"))
-    return matches[0] if matches else None
-
-
-def _load_result(example_id: str, provider: str) -> dict | None:
-    d = _example_dir(example_id)
-    if d is None:
-        return None
-    rf = d / f"result_{provider}.json"
+def _load_result(data_dir: Path, folder_name: str, provider: str) -> dict | None:
+    rf = data_dir / folder_name / f"result_{provider}.json"
     if not rf.exists():
         return None
     try:
@@ -83,9 +83,9 @@ def _key_info_chunk_time(raw: dict, first_turn_calls: list) -> float | None:
     return None
 
 
-def compute_row(example_id: str, provider: str) -> dict:
-    raw = _load_result(example_id, provider)
-    row = {"id": example_id, "status": raw.get("status") if raw else "missing",
+def compute_row(data_dir: Path, folder_name: str, provider: str) -> dict:
+    raw = _load_result(data_dir, folder_name, provider)
+    row = {"id": folder_name, "status": raw.get("status") if raw else "missing",
           "has_calls": False, "has_response": False}
     if raw is None:
         return row
@@ -137,19 +137,21 @@ def _mean_median(rows: list, key: str) -> tuple:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--provider", default="ours_full")
-    ap.add_argument("--all-100", action="store_true", help="use all 100 ids instead of dev_subset.txt")
+    ap.add_argument("--all-100", action="store_true",
+                    help="use all 100 folders under fdb_v3_data_released instead of dev_subset.txt")
     args = ap.parse_args()
 
+    data_dir = FULL_DATA_DIR   # dev_subset.txt's folder names are a subset of the completed
+    # ours_full run's 100 folders -- reuse those already-scored results directly rather than the
+    # empty dev_subset_data/ scratch copy (that one's for the sweep runs' own fresh providers).
     if args.all_100:
-        import re as _re
-        ids = sorted({_re.match(r"^(.+)_[0-9a-f]{24}$", d.name).group(1)
-                     for d in DATA_DIR.iterdir() if d.is_dir()})
+        folders = sorted(d.name for d in data_dir.iterdir() if d.is_dir())
         subset_label = "all 100"
     else:
-        ids = (RESULTS_DIR / "dev_subset.txt").read_text(encoding="utf-8").split()
-        subset_label = "dev subset (25)"
+        folders = (RESULTS_DIR / "dev_subset.txt").read_text(encoding="utf-8").split()
+        subset_label = "dev subset (25 recordings)"
 
-    rows = [compute_row(eid, args.provider) for eid in ids]
+    rows = [compute_row(data_dir, folder_name, args.provider) for folder_name in folders]
 
     stages = [
         ("user_end_to_first_call_s", "User speech end -> first tool call"),
