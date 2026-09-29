@@ -221,11 +221,14 @@ async def entrypoint(ctx: agents.JobContext):
         # script — found via a live test, not a hypothetical.
         #
         # google.genai.types has no LanguageCode enum (checked: hasattr is False) -- the
-        # plugin's `language` param is an unvalidated NotGivenOr[str], so "en-IN" acceptance
-        # can only be confirmed by a live session, not static inspection. Default to "en-IN"
-        # (closer to the expected accent); if a live test shows Gemini rejects or mishandles
-        # it, set GOOGLE_LANGUAGE=en-US as an override -- no code change needed either way.
-        language=(_lang := os.getenv("GOOGLE_LANGUAGE", "en-IN")),
+        # plugin's `language` param is an unvalidated NotGivenOr[str], so acceptance can only be
+        # confirmed by a live session, not static inspection. "en-IN" WAS tried first, live, and
+        # is rejected outright: the model closes the whole session before anything is heard
+        # (google.genai.errors.APIError: "1007 ... Unsupported language code 'en-IN' for model
+        # models/gemini-2.5-flash-native-audio-preview-12-2025" -- see device_agent_run9.log).
+        # Falling back to "en-US" per the task's own fallback rule; GOOGLE_LANGUAGE still
+        # overrides if a future model version adds en-IN support.
+        language=(_lang := os.getenv("GOOGLE_LANGUAGE", "en-US")),
         input_audio_transcription=genai_types.AudioTranscriptionConfig(
             language_codes=[_lang]),
         output_audio_transcription=genai_types.AudioTranscriptionConfig(
