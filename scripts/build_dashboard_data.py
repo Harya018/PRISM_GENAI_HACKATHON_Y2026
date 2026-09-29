@@ -47,7 +47,20 @@ import re
 import statistics
 from pathlib import Path
 
-_DEFAULT_FDB_ROOT = Path(__file__).resolve().parent.parent.parent / "Full-Duplex-Bench" / "v3"
+def _default_fdb_root() -> Path:
+    """scripts/run_fdb_v3.sh (the actual one-command reproduction script) clones FDB-v3 into
+    fdb-agent/.fdb-v3/v3 -- that's what a fresh checkout of this repo will have after running it.
+    A sibling ../../Full-Duplex-Bench/v3 (this script's original default, from local development
+    before the clone-per-run workflow existed) is checked second, for anyone who already has one
+    checked out there. Neither existing is fine too -- --fdb-root is always available to override."""
+    repo_root = Path(__file__).resolve().parent.parent
+    in_repo_clone = repo_root / ".fdb-v3" / "v3"
+    if in_repo_clone.exists():
+        return in_repo_clone
+    return repo_root.parent / "Full-Duplex-Bench" / "v3"
+
+
+_DEFAULT_FDB_ROOT = _default_fdb_root()
 _DEFAULT_OUT = Path(__file__).resolve().parent.parent / "docs" / "dashboard_data.json"
 
 _FOLDER_RE = re.compile(r"^(.+)_([0-9a-f]{24})$")

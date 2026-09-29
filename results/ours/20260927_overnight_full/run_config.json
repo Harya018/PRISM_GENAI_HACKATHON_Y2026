@@ -1,0 +1,18 @@
+{
+  "mode": "ours",
+  "agent_script": "agent/lk_agent.py (deployed as lk_agent_ours.py, per scripts/run_fdb_v3.sh)",
+  "provider": "gemini2_5 (google.realtime.RealtimeModel, Gemini Live)",
+  "dispatch_name": "fdb-ours",
+  "total_scenarios": 100,
+  "completed": 100,
+  "judge": "none (exact-match only) -- NOT the official gpt-4o judge",
+  "evaluated_at": "2026-09-27T14:28:15.153307",
+  "run_method": "overnight_runner.py (Full-Duplex-Bench/v3/overnight_runner.py), not scripts/run_fdb_v3.sh directly",
+  "why_not_run_fdb_v3_sh_directly": "This is a from-scratch full-100 inference run against a live Gemini Live session per scenario; it took multiple hours end to end and needed auto-recovery (restart the agent if it dies or stalls, resume without re-running completed scenarios) that run_fdb_v3.sh's single linear script does not have. overnight_runner.py wraps the exact same run_tool_benchmark_all_released.py / evaluate_tool_calls.py / evaluate_pass_rate.py calls run_fdb_v3.sh itself would make -- same agent code, same official (unmodified) scorer, same benchmark data -- it only adds retry/resume orchestration around them. See patches/README.md for why overnight_runner.py exists.",
+  "seed": "PYTHONHASHSEED as set by the shell environment at run time (not independently pinned per-invocation the way scripts/run_fdb_v3.sh's SEED=1234 is) -- not separately recorded; flagged here rather than fabricated. scripts/run_fdb_v3.sh (the actual reproduction script that gets re-run for grading) does pin PYTHONHASHSEED=1234 (see run_config.json it writes to results/{mode}/<run_id>/).",
+  "important_caveat": "These are EXACT-MATCH scores (judge='none'), not the official --use-llm (gpt-4o) judge the graded re-run uses, because no OPENAI_API_KEY was available in this environment when this run was made. Argument accuracy and pass@1 under the official semantic judge will differ (typically higher, since exact-match is stricter than semantic matching). See results/OVERNIGHT_REPORT.md for the full breakdown and docs/dashboard_data.json for the curated numbers the dashboard's Results tab displays.",
+  "source_files": [
+    "ours_full_toolcalls_exact.json -- evaluate_tool_calls.py output, unmodified",
+    "ours_full_pass_rate_exact.json -- evaluate_pass_rate.py output, unmodified"
+  ]
+}

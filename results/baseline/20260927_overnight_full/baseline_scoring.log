@@ -1,0 +1,615 @@
+OneLogger: Setting error_handling_strategy to DISABLE_QUIETLY_AND_REPORT_METRIC_ERROR for rank (rank=0) with OneLogger disabled. To override: explicitly set error_handling_strategy parameter.
+No exporters were provided. This means that no telemetry data will be collected.
+🚀 Batch evaluation started (released layout)
+🤖 Provider: baseline_full
+📁 Root Dir: fdb_v3_data_released
+📋 Loaded 100 scenarios from benchmark_data_v2.json
+🔊 Loading ASR model...
+🔊 Loading ASR model...
+[NeMo I 2026-09-27 14:22:35 mixins:194] Tokenizer SentencePieceTokenizer initialized with 1024 tokens
+[NeMo W 2026-09-27 14:22:36 modelPT:175] If you intend to do training or fine-tuning, please call the ModelPT.setup_training_data() method and provide a valid configuration file to setup the train data loader.
+    Train config : 
+    use_lhotse: true
+    skip_missing_manifest_entries: true
+    input_cfg: null
+    tarred_audio_filepaths: null
+    manifest_filepath: null
+    sample_rate: 16000
+    shuffle: true
+    num_workers: 2
+    pin_memory: true
+    max_duration: 40.0
+    min_duration: 0.1
+    text_field: answer
+    batch_duration: null
+    use_bucketing: true
+    bucket_duration_bins: null
+    bucket_batch_size: null
+    num_buckets: 30
+    bucket_buffer_size: 20000
+    shuffle_buffer_size: 10000
+    
+[NeMo W 2026-09-27 14:22:36 modelPT:182] If you intend to do validation, please call the ModelPT.setup_validation_data() or ModelPT.setup_multiple_validation_data() method and provide a valid configuration file to setup the validation data loader(s). 
+    Validation config : 
+    use_lhotse: true
+    manifest_filepath: null
+    sample_rate: 16000
+    batch_size: 16
+    shuffle: false
+    max_duration: 40.0
+    min_duration: 0.1
+    num_workers: 2
+    pin_memory: true
+    text_field: answer
+    
+[NeMo I 2026-09-27 14:22:45 rnnt_models:226] Using RNNT Loss : tdt
+    Loss tdt_kwargs: {'fastemit_lambda': 0.0, 'clamp': -1.0, 'durations': [0, 1, 2, 3, 4], 'sigma': 0.02, 'omega': 0.1}
+[NeMo I 2026-09-27 14:22:45 rnnt_models:226] Using RNNT Loss : tdt
+    Loss tdt_kwargs: {'fastemit_lambda': 0.0, 'clamp': -1.0, 'durations': [0, 1, 2, 3, 4], 'sigma': 0.02, 'omega': 0.1}
+[NeMo W 2026-09-27 14:22:45 label_looping_base:143] No conditional node support for Cuda.
+    Cuda graphs with while loops are disabled, decoding speed will be slower
+    Reason: CUDA is not available
+[NeMo I 2026-09-27 14:22:49 rnnt_models:226] Using RNNT Loss : tdt
+    Loss tdt_kwargs: {'fastemit_lambda': 0.0, 'clamp': -1.0, 'durations': [0, 1, 2, 3, 4], 'sigma': 0.02, 'omega': 0.1}
+[NeMo W 2026-09-27 14:22:49 label_looping_base:143] No conditional node support for Cuda.
+    Cuda graphs with while loops are disabled, decoding speed will be slower
+    Reason: CUDA is not available
+[NeMo I 2026-09-27 14:23:28 save_restore_connector:287] Model EncDecRNNTBPEModel was successfully restored from C:\Users\harya\.cache\huggingface\hub\models--nvidia--parakeet-tdt-0.6b-v2\snapshots\ae9ad07059c7c739ffaf932226a8fe64ae2620b0\parakeet-tdt-0.6b-v2.nemo.
+✅ ASR model loaded
+✅ ASR model loaded
+📋 Merged 79 per-folder metadata.json entries → 100 total
+📂 Found 100 input.wav files
+
+[1/100] Processing Speaker=65e8cf8f... Example=ecommerce_01...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:23:31 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo I 2026-09-27 14:23:31 rnnt_models:226] Using RNNT Loss : tdt
+    Loss tdt_kwargs: {'fastemit_lambda': 0.0, 'clamp': -1.0, 'durations': [0, 1, 2, 3, 4], 'sigma': 0.02, 'omega': 0.1}
+[NeMo W 2026-09-27 14:23:31 label_looping_base:143] No conditional node support for Cuda.
+    Cuda graphs with while loops are disabled, decoding speed will be slower
+    Reason: CUDA is not available
+[NeMo W 2026-09-27 14:23:31 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:23:31 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s][NeMo W 2026-09-27 14:23:31 nemo_logging:364] C:\dev\samsung\fdb-venv\Lib\site-packages\torch\utils\data\dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+      super().__init__(loader)
+    
+Transcribing: 1it [00:06,  6.81s/it]Transcribing: 1it [00:06,  6.81s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:23:38 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:23:38 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:23:38 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:05,  5.10s/it]Transcribing: 1it [00:05,  5.10s/it]
+  📝 Transcript: Your order is currently out for delivery....
+  ⏱️  Perceived Latency: 4.40s (Agent Start: 19.68s - User End: 15.280000000000001s)
+  💾 Saved: result_baseline_full.json
+
+[2/100] Processing Speaker=69a9cf80... Example=ecommerce_01...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:23:43 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:23:43 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:23:43 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:05,  5.77s/it]Transcribing: 1it [00:05,  5.77s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:23:49 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:23:49 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:23:49 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:05,  5.97s/it]Transcribing: 1it [00:05,  5.97s/it]
+  📝 Transcript: Your order is currently out for delivery....
+  ⏱️  Perceived Latency: 9.12s (Agent Start: 27.68s - User End: 18.56s)
+  💾 Saved: result_baseline_full.json
+
+[3/100] Processing Speaker=5f4a4da1... Example=ecommerce_02...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:23:55 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:23:55 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:23:55 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:05,  5.38s/it]Transcribing: 1it [00:05,  5.38s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:24:01 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:01 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:01 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:04,  4.92s/it]Transcribing: 1it [00:04,  4.92s/it]
+  📝 Transcript: I found one wireless headphones product for ninety dollars....
+  ⏱️  Perceived Latency: 6.96s (Agent Start: 19.52s - User End: 12.56s)
+  💾 Saved: result_baseline_full.json
+
+[4/100] Processing Speaker=6998abd7... Example=ecommerce_04...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:24:06 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:06 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:06 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:05,  5.17s/it]Transcribing: 1it [00:05,  5.17s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:24:11 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:11 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:11 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:04,  4.89s/it]Transcribing: 1it [00:04,  4.89s/it]
+  📝 Transcript: Your package is out for delivery....
+  ⏱️  Perceived Latency: 7.04s (Agent Start: 17.52s - User End: 10.48s)
+  💾 Saved: result_baseline_full.json
+
+[5/100] Processing Speaker=695bd157... Example=ecommerce_05...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:24:16 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:16 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:16 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:08,  8.14s/it]Transcribing: 1it [00:08,  8.14s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:24:25 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:25 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:25 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:08,  8.70s/it]Transcribing: 1it [00:08,  8.70s/it]
+  📝 Transcript: Sure, take your time. Let me know what you're looking for....
+  ⏱️  Perceived Latency: 11.92s (Agent Start: 19.12s - User End: 7.2s)
+  💾 Saved: result_baseline_full.json
+
+[6/100] Processing Speaker=66c4f3cb... Example=ecommerce_06...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:24:34 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:34 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:34 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.89s/it]Transcribing: 1it [00:07,  7.89s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:24:42 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:42 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:42 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.42s/it]Transcribing: 1it [00:06,  6.42s/it]
+  📝 Transcript: Added two items K2 to your part. Okay, I've added two units of item K two to your cart....
+  ⏱️  Perceived Latency: 8.48s (Agent Start: 22.64s - User End: 14.16s)
+  💾 Saved: result_baseline_full.json
+
+[7/100] Processing Speaker=66f59c76... Example=ecommerce_07...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:24:48 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:48 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:48 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.44s/it]Transcribing: 1it [00:07,  7.44s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:24:56 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:24:56 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:24:56 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.57s/it]Transcribing: 1it [00:07,  7.57s/it]
+  📝 Transcript: Your order Fast Ninety Nine is out for delivery....
+  ⏱️  Perceived Latency: 9.76s (Agent Start: 27.36s - User End: 17.6s)
+  💾 Saved: result_baseline_full.json
+
+[8/100] Processing Speaker=5ff07b5e... Example=ecommerce_08...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:25:04 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:04 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:04 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.95s/it]Transcribing: 1it [00:06,  6.95s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:25:11 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:11 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:11 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.77s/it]Transcribing: 1it [00:06,  6.77s/it]
+  📝 Transcript: Yes, I found one mechanical keyboard premium for one hundred ninety dollars, which is within your bu...
+  ⏱️  Perceived Latency: 9.04s (Agent Start: 23.76s - User End: 14.72s)
+  💾 Saved: result_baseline_full.json
+
+[9/100] Processing Speaker=61517db6... Example=ecommerce_08...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:25:18 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:18 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:18 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.49s/it]Transcribing: 1it [00:06,  6.49s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:25:24 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:24 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:24 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.54s/it]Transcribing: 1it [00:06,  6.54s/it]
+  📝 Transcript: I found one mechanical keyboard, the Mechanical Keyboard Premium, for $190....
+  ⏱️  Perceived Latency: 6.56s (Agent Start: 19.36s - User End: 12.8s)
+  💾 Saved: result_baseline_full.json
+
+[10/100] Processing Speaker=695bd157... Example=ecommerce_09...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:25:31 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:31 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:31 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.93s/it]Transcribing: 1it [00:06,  6.93s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:25:38 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:38 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:38 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.55s/it]Transcribing: 1it [00:06,  6.56s/it]
+  📝 Transcript: I found Why King Boots Premium for $99.99....
+  ⏱️  Perceived Latency: 7.44s (Agent Start: 21.2s - User End: 13.76s)
+  💾 Saved: result_baseline_full.json
+
+[11/100] Processing Speaker=6998abd7... Example=ecommerce_10...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:25:45 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:45 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:45 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.92s/it]Transcribing: 1it [00:07,  7.92s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:25:53 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:25:53 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:25:53 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.59s/it]Transcribing: 1it [00:07,  7.60s/it]
+  📝 Transcript: Your order with order ID one two three ABC is out for delivery. I also found a winter jackets premiu...
+  ⏱️  Perceived Latency: 10.00s (Agent Start: 30.080000000000002s - User End: 20.080000000000002s)
+  💾 Saved: result_baseline_full.json
+
+[12/100] Processing Speaker=62a885d5... Example=ecommerce_11...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:26:00 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:00 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:01 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.85s/it]Transcribing: 1it [00:06,  6.85s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:26:07 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:07 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:07 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:05,  5.98s/it]Transcribing: 1it [00:05,  5.98s/it]
+  📝 Transcript: Added one product B seven to your cart. Okay, I've added product B seven to your cart....
+  ⏱️  Perceived Latency: 6.24s (Agent Start: 16.72s - User End: 10.48s)
+  💾 Saved: result_baseline_full.json
+
+[13/100] Processing Speaker=6998abd7... Example=ecommerce_12...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:26:14 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:14 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:14 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.11s/it]Transcribing: 1it [00:06,  6.11s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:26:20 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:20 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:20 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:06,  6.32s/it]Transcribing: 1it [00:06,  6.32s/it]
+  📝 Transcript: Could you please specify what catches and text stuff you are referring to?...
+  ⏱️  Perceived Latency: 6.32s (Agent Start: 17.04s - User End: 10.72s)
+  💾 Saved: result_baseline_full.json
+
+[14/100] Processing Speaker=5ff07b5e... Example=ecommerce_13...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:26:26 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:26 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:26 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:08,  8.14s/it]Transcribing: 1it [00:08,  8.14s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:26:35 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:35 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:35 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.87s/it]Transcribing: 1it [00:07,  7.88s/it]
+  📝 Transcript: Order D E L I V is currently out for delivery....
+  ⏱️  Perceived Latency: 9.20s (Agent Start: 29.52s - User End: 20.32s)
+  💾 Saved: result_baseline_full.json
+
+[15/100] Processing Speaker=61517db6... Example=ecommerce_13...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:26:43 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:43 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:43 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:08,  8.78s/it]Transcribing: 1it [00:08,  8.79s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:26:52 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:26:52 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:26:52 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:08,  8.61s/it]Transcribing: 1it [00:08,  8.61s/it]
+  📝 Transcript: I have added K2 to your cart, and your order to live is currently out for delivery....
+  ⏱️  Perceived Latency: 14.80s (Agent Start: 40.88s - User End: 26.080000000000002s)
+  💾 Saved: result_baseline_full.json
+
+[16/100] Processing Speaker=5ff07b5e... Example=ecommerce_14...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[17/100] Processing Speaker=61517db6... Example=ecommerce_14...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[18/100] Processing Speaker=56780a5a... Example=ecommerce_15...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[19/100] Processing Speaker=66c4f3cb... Example=ecommerce_15...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[20/100] Processing Speaker=695bd157... Example=ecommerce_16...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[21/100] Processing Speaker=5f4a4da1... Example=ecommerce_17...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[22/100] Processing Speaker=62a885d5... Example=ecommerce_18...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[23/100] Processing Speaker=66f59c76... Example=ecommerce_19...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[24/100] Processing Speaker=66c4f3cb... Example=ecommerce_20...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[25/100] Processing Speaker=65e8cf8f... Example=ecommerce_21...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[26/100] Processing Speaker=69a9cf80... Example=ecommerce_21...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[27/100] Processing Speaker=5f4a4da1... Example=ecommerce_23...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[28/100] Processing Speaker=65e8cf8f... Example=ecommerce_25...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[29/100] Processing Speaker=69a9cf80... Example=ecommerce_25...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[30/100] Processing Speaker=65e8cf8f... Example=finance_01...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[31/100] Processing Speaker=69a9cf80... Example=finance_01...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[32/100] Processing Speaker=6998abd7... Example=finance_02...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[33/100] Processing Speaker=5ff07b5e... Example=finance_03...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[34/100] Processing Speaker=61517db6... Example=finance_03...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[35/100] Processing Speaker=62a885d5... Example=finance_04...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[36/100] Processing Speaker=66f59c76... Example=finance_06...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[37/100] Processing Speaker=5ff07b5e... Example=finance_07...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[38/100] Processing Speaker=61517db6... Example=finance_07...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[39/100] Processing Speaker=65e8cf8f... Example=finance_08...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[40/100] Processing Speaker=69a9cf80... Example=finance_08...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[41/100] Processing Speaker=66c4f3cb... Example=finance_10...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[42/100] Processing Speaker=695bd157... Example=finance_11...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[43/100] Processing Speaker=65e8cf8f... Example=finance_12...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[44/100] Processing Speaker=69a9cf80... Example=finance_12...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[45/100] Processing Speaker=5f4a4da1... Example=finance_14...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[46/100] Processing Speaker=66c4f3cb... Example=finance_15...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[47/100] Processing Speaker=62a885d5... Example=finance_16...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[48/100] Processing Speaker=6998abd7... Example=finance_17...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[49/100] Processing Speaker=6998abd7... Example=finance_18...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:27:01 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:27:01 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:27:01 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.84s/it]Transcribing: 1it [00:07,  7.84s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:27:09 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:27:09 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:27:09 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.90s/it]Transcribing: 1it [00:07,  7.90s/it]
+  📝 Transcript: 1,000 USD is 900.0 Euro. I've successfully updated your credit card auto pay to pull from your savin...
+  ⏱️  Perceived Latency: 8.72s (Agent Start: 28.16s - User End: 19.44s)
+  💾 Saved: result_baseline_full.json
+
+[50/100] Processing Speaker=66f59c76... Example=finance_19...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:27:17 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:27:17 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:27:17 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:08,  8.34s/it]Transcribing: 1it [00:08,  8.34s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:27:25 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:27:25 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:27:25 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:07,  7.76s/it]Transcribing: 1it [00:07,  7.76s/it]
+  📝 Transcript: Three hundred Euros is three hundred and thirty point zero British pounds....
+  ⏱️  Perceived Latency: 6.24s (Agent Start: 20.8s - User End: 14.56s)
+  💾 Saved: result_baseline_full.json
+
+[51/100] Processing Speaker=66c4f3cb... Example=finance_20...
+  🗣️  Running ASR on input audio...
+[NeMo I 2026-09-27 14:27:33 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:27:33 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:27:33 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:09,  9.73s/it]Transcribing: 1it [00:09,  9.73s/it]
+  ⏱️  Measuring latency...
+  🗣️  Running ASR on model output...
+[NeMo I 2026-09-27 14:27:43 rnnt_models:296] Timestamps requested, setting decoding timestamps to True. Capture them in Hypothesis object,                         with output[0][idx].timestep['word'/'segment'/'char']
+[NeMo W 2026-09-27 14:27:43 dataloader:881] The following configuration keys are ignored by Lhotse dataloader: use_start_end_token
+[NeMo W 2026-09-27 14:27:43 dataloader:533] You are using a non-tarred dataset and requested tokenization during data sampling (pretokenize=True). This will cause the tokenization to happen in the main (GPU) process,possibly impacting the training speed if your tokenizer is very large.If the impact is noticable, set pretokenize=False in dataloader config.(note: that will disable token-per-second filtering and 2D bucketing features)
+Transcribing: 0it [00:00, ?it/s]Transcribing: 1it [00:08,  8.04s/it]Transcribing: 1it [00:08,  8.04s/it]
+  📝 Transcript: 1,000 US dollars is 900 euros equivalent to 900.0 euros at the current rate.9. Let me know if you'd ...
+  ⏱️  Perceived Latency: 12.40s (Agent Start: 34.08s - User End: 21.68s)
+  💾 Saved: result_baseline_full.json
+
+[52/100] Processing Speaker=5e3c1fbe... Example=finance_21...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[53/100] Processing Speaker=5f4a4da1... Example=finance_22...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[54/100] Processing Speaker=66f59c76... Example=finance_23...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[55/100] Processing Speaker=62a885d5... Example=housing_01...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[56/100] Processing Speaker=5f4a4da1... Example=housing_02...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[57/100] Processing Speaker=5f4a4da1... Example=housing_03...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[58/100] Processing Speaker=695bd157... Example=housing_04...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[59/100] Processing Speaker=5ff07b5e... Example=housing_05...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[60/100] Processing Speaker=61517db6... Example=housing_05...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[61/100] Processing Speaker=5f4a4da1... Example=housing_06...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[62/100] Processing Speaker=66f59c76... Example=housing_08...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[63/100] Processing Speaker=695bd157... Example=housing_09...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[64/100] Processing Speaker=66f59c76... Example=housing_10...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[65/100] Processing Speaker=62a885d5... Example=housing_11...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[66/100] Processing Speaker=5f4a4da1... Example=housing_13...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[67/100] Processing Speaker=5ff07b5e... Example=housing_14...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[68/100] Processing Speaker=61517db6... Example=housing_14...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[69/100] Processing Speaker=5ff07b5e... Example=housing_15...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[70/100] Processing Speaker=61517db6... Example=housing_15...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[71/100] Processing Speaker=65e8cf8f... Example=housing_17...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[72/100] Processing Speaker=69a9cf80... Example=housing_17...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[73/100] Processing Speaker=66c4f3cb... Example=housing_18...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[74/100] Processing Speaker=62a885d5... Example=housing_19...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[75/100] Processing Speaker=62a885d5... Example=housing_20...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[76/100] Processing Speaker=66c4f3cb... Example=housing_21...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[77/100] Processing Speaker=695bd157... Example=housing_22...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[78/100] Processing Speaker=65e8cf8f... Example=housing_24...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[79/100] Processing Speaker=69a9cf80... Example=housing_24...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[80/100] Processing Speaker=66f59c76... Example=housing_25...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[81/100] Processing Speaker=62a885d5... Example=travel_01...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[82/100] Processing Speaker=5e3c1fbe... Example=travel_02...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[83/100] Processing Speaker=5ff07b5e... Example=travel_03...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[84/100] Processing Speaker=61517db6... Example=travel_03...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[85/100] Processing Speaker=6998abd7... Example=travel_05...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[86/100] Processing Speaker=5ff07b5e... Example=travel_07...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[87/100] Processing Speaker=61517db6... Example=travel_07...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[88/100] Processing Speaker=695bd157... Example=travel_08...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[89/100] Processing Speaker=5f4a4da1... Example=travel_10...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[90/100] Processing Speaker=66c4f3cb... Example=travel_11...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[91/100] Processing Speaker=66c4f3cb... Example=travel_14...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[92/100] Processing Speaker=66f59c76... Example=travel_16...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[93/100] Processing Speaker=66f59c76... Example=travel_18...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[94/100] Processing Speaker=695bd157... Example=travel_19...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[95/100] Processing Speaker=62a885d5... Example=travel_20...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[96/100] Processing Speaker=65e8cf8f... Example=travel_21...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[97/100] Processing Speaker=69a9cf80... Example=travel_21...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[98/100] Processing Speaker=65e8cf8f... Example=travel_23...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[99/100] Processing Speaker=69a9cf80... Example=travel_23...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+[100/100] Processing Speaker=695bd157... Example=travel_24...
+  ⏭️  Already evaluated — skipping (use --force to re-run)
+
+------------------------------------------------------------
+🏁 Batch Evaluation Complete
+⏱️  Total Duration: 4.38 minutes
+📊 Summary:
+   - Total:   100
+   - Success: 18
+   - Error:   0
+   - Skipped: 82
+   - Avg First-Speech Latency: 23.19s
+   - Avg Perceived Latency:    8.59s
+------------------------------------------------------------
