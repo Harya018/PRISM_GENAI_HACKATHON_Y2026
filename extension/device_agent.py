@@ -39,7 +39,7 @@ from livekit.plugins import google
 
 logger = logging.getLogger("device_agent")
 
-from agent.commit_gate import CommitGate
+from agent.commit_gate import CommitGate, _redact as redact_args
 from mock_device_apis import DeviceAPIRegistry
 
 if hasattr(llm, "function_tool"):
@@ -61,6 +61,10 @@ EXT_CONTEXT_COMPRESSION = os.getenv("LK_EXT_CONTEXT_COMPRESSION", "").lower() in
 EXT_MEDIA_RESOLUTION = os.getenv("LK_EXT_MEDIA_RESOLUTION")   # unset|LOW|MEDIUM|HIGH -- X2
 EXT_PROACTIVITY = os.getenv("LK_EXT_PROACTIVITY", "").lower() in ("1", "true", "yes")  # X3
 EXT_AFFECTIVE_DIALOG = os.getenv("LK_EXT_AFFECTIVE_DIALOG", "").lower() in ("1", "true", "yes")  # X3
+_TOOL_TIMEOUT_RAW = os.getenv("LK_TOOL_TIMEOUT_S")   # H1, unset -> None (unbounded, unchanged)
+TOOL_TIMEOUT_S = float(_TOOL_TIMEOUT_RAW) if _TOOL_TIMEOUT_RAW is not None else None
+_MAX_CALLS_RAW = os.getenv("LK_MAX_CALLS_PER_TOOL")   # H1, unset -> None (unbounded, unchanged)
+MAX_CALLS_PER_TOOL = int(_MAX_CALLS_RAW) if _MAX_CALLS_RAW is not None else None
 
 TOOL_KINDS = {
     "lookup_manual": "read_only",
@@ -149,9 +153,13 @@ class DeviceAssistantFnc:
         self.gate = gate
 
     def _log_tool_call(self, func_name, args, t_start, t_end):
+        # H1: same redaction CommitGate applies to its own log -- this file writes the model's
+        # raw proposed args (pre-resolver), a separate log stream, so it needs its own redaction
+        # rather than relying on CommitGate's. No sensitive args exist in this extension's own
+        # tools today; applied anyway so a future tool with one doesn't silently write it to disk.
         with open("/tmp/device_tool_calls.log", "a") as f:
             f.write(json.dumps({"room": self.room_name,
-                               "call": {"function": func_name, "args": args,
+                               "call": {"function": func_name, "args": redact_args(args),
                                         "timestamp_start": t_start, "timestamp_end": t_end}}) + "\n")
 
     async def _call(self, name: str, **args):
@@ -330,7 +338,8 @@ async def entrypoint(ctx: agents.JobContext):
     gate = CommitGate(call_tool=lambda name, args: registry.call(name, **args),
                       tool_kinds=TOOL_KINDS, tool_schemas=TOOL_SCHEMAS,
                       buffer_ms=COMMIT_BUFFER_MS, confirm_required=CONFIRM_REQUIRED,
-                      on_committed=on_committed, on_event=on_gate_event)
+                      on_committed=on_committed, on_event=on_gate_event,
+                      tool_timeout_s=TOOL_TIMEOUT_S, max_calls_per_tool=MAX_CALLS_PER_TOOL)
 
     fnc_ctx = DeviceAssistantFnc(turn, gate, ctx.room.name)
     tools = llm.find_function_tools(fnc_ctx)

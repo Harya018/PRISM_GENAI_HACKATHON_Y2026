@@ -60,6 +60,10 @@ NORMALIZE_ARGS = os.getenv("LK_NORMALIZE_ARGS", "").lower() in ("1", "true", "ye
 READONLY_DEDUPE = os.getenv("LK_READONLY_DEDUPE", "").lower() in ("1", "true", "yes")   # P1
 TOOL_DESC_V2 = os.getenv("LK_TOOL_DESC_V2", "").lower() in ("1", "true", "yes")   # A2
 INSTRUCTIONS_V2 = os.getenv("LK_INSTRUCTIONS_V2", "").lower() in ("1", "true", "yes")   # P3
+_TOOL_TIMEOUT_RAW = os.getenv("LK_TOOL_TIMEOUT_S")   # H1, unset -> None (unbounded, unchanged)
+TOOL_TIMEOUT_S = float(_TOOL_TIMEOUT_RAW) if _TOOL_TIMEOUT_RAW is not None else None
+_MAX_CALLS_RAW = os.getenv("LK_MAX_CALLS_PER_TOOL")   # H1, unset -> None (unbounded, unchanged)
+MAX_CALLS_PER_TOOL = int(_MAX_CALLS_RAW) if _MAX_CALLS_RAW is not None else None
 
 
 def _desc(base: str, enriched: str) -> str:
@@ -378,7 +382,8 @@ async def entrypoint(ctx: agents.JobContext):
     gate = CommitGate(call_tool=_call_tool_sync, tool_kinds=TOOL_KINDS,
                       tool_schemas=TOOL_SCHEMAS, buffer_ms=COMMIT_BUFFER_MS,
                       normalize_fn=normalize_args if NORMALIZE_ARGS else None,
-                      dedupe_read_only=READONLY_DEDUPE)
+                      dedupe_read_only=READONLY_DEDUPE,
+                      tool_timeout_s=TOOL_TIMEOUT_S, max_calls_per_tool=MAX_CALLS_PER_TOOL)
 
     fnc_ctx = AssistantFnc(tracker, turn, gate, ctx.room.name)
     tools = llm.find_function_tools(fnc_ctx)

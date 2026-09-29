@@ -28,6 +28,25 @@ afterward, by a human, a results table, or (later) the frontend's commit-gate pa
 Buffer window is configurable (`buffer_ms`) precisely so it can be swept empirically (A2) —
 this is a deliberate latency-vs-safety knob, not a fixed constant, and should only ship at a
 value proven (on real runs, not assumption) to help pass rate more than it costs latency.
+
+H1 additions (argument redaction, an async-only tool timeout, and per-tool admission control)
+were pulled in after reviewing another team's write-up of their own interruptible-agent
+architecture, which described a harness with admission control, timeouts, and redaction as a
+single bullet. All three are additive and default OFF/unbounded (current behavior unchanged
+unless explicitly configured) except redaction, which only ever touches what's logged/streamed,
+never what reaches call_tool.
+
+One idea from that same write-up was deliberately NOT adopted here: starting a read-only tool
+call speculatively, in the background, the instant it's proposed -- before the buffer window
+confirms it won't be superseded -- to overlap the tool's own latency with the correction-
+detection buffer. Investigated and rejected: FDB-v3's own mock_apis.py (`MockAPIRegistry.call`)
+logs every invocation into a `CallLogger` the instant `call_tool` runs, and that log is what the
+benchmark reads back as `actual_tool_calls` for scoring. Starting a call speculatively means
+invoking call_tool before we know it will be superseded -- which would get the superseded call
+permanently recorded as an "extra call" and penalized, exactly the failure mode this whole class
+exists to prevent. This is safe for a pure information-retrieval system with no external logging
+tied to invocation, which is what that other project's own architecture is; it is not safe here,
+where the very act of calling is what gets scored.
 """
 
 from __future__ import annotations
@@ -48,6 +67,25 @@ except ImportError:
 def _norm_args(args: Dict[str, Any]) -> str:
     return json.dumps({k: str(v).strip().lower() for k, v in sorted(args.items())},
                       sort_keys=True)
+
+
+# H1: argument redaction for anything logged/streamed (self.log, on_event) -- never applied to
+# what actually reaches call_tool, only to what a human/UI/log file sees. Name-pattern based
+# (not a fixed per-tool list) so it also covers the extension's own tools without maintenance;
+# matches agent/lk_agent.py's real sensitive args (update_identity_doc's doc_number,
+# modify_autopay's source_account) by construction, not by hardcoding those two names.
+_SENSITIVE_ARG_RE = re.compile(
+    r"(doc_number|account|routing|ssn|password|passwd|card_number|cvv|\bpin\b|secret|"
+    r"api_key|token)", re.I)
+
+
+def _redact(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: ("***REDACTED***" if _SENSITIVE_ARG_RE.search(k) else v)
+           for k, v in args.items()}
+
+
+def _redact_value(arg_name: str, value: Any) -> Any:
+    return "***REDACTED***" if _SENSITIVE_ARG_RE.search(arg_name) else value
 
 
 _CONFIRMATION_RE = re.compile(
@@ -111,9 +149,22 @@ class CommitGate:
                                      # dedupe cache instead of re-executing — off by default
                                      # because read-only re-calls were never penalized before
                                      # this flag existed and this changes real behavior
+    tool_timeout_s: Optional[float] = None   # H1, default off (unbounded, current behavior):
+                                             # only meaningful for an ASYNC call_tool (a sync one
+                                             # can't be interrupted mid-call without running it in
+                                             # an executor, which none of this codebase's mock
+                                             # tools need — all are fast, in-memory, deterministic)
+    max_calls_per_tool: Optional[int] = None   # H1, default off (unbounded, current behavior):
+                                               # admission control against a runaway loop of
+                                               # genuinely-different-argument calls to the same
+                                               # tool — distinct from dedupe, which only blocks an
+                                               # EXACT repeat. Counts only calls that actually
+                                               # reach call_tool (committed, not superseded), so a
+                                               # long correction chain on one tool never trips it
     _pending: Dict[str, _Pending] = field(default_factory=dict)
     _executed: Dict[str, Any] = field(default_factory=dict)   # dedupe key -> result
     _confirmed: set = field(default_factory=set)   # confirm_required tools cleared this session
+    _call_counts: Dict[str, int] = field(default_factory=dict)   # tool_name -> committed count
     _call_seq: int = 0
 
     def _next_call_id(self) -> str:
@@ -167,10 +218,10 @@ class CommitGate:
             coerced = self._coerce_to_arg_type(tool_name, k, stale_hit)
             if coerced is None:
                 self._emit("resolver_correction_rejected", tool=tool_name, arg=k,
-                          raw_value=stale_hit, reason="failed_type_coercion")
+                          raw_value=_redact_value(k, stale_hit), reason="failed_type_coercion")
                 continue
             self._emit("resolver_corrected_arg", tool=tool_name, arg=k,
-                      from_value=out[k], to_value=coerced)
+                      from_value=_redact_value(k, out[k]), to_value=_redact_value(k, coerced))
             out[k] = coerced
         return out
 
@@ -188,7 +239,7 @@ class CommitGate:
                 self._confirmed.add(tool_name)
                 self._emit("confirmed", tool=tool_name)
             else:
-                self._emit("confirmation_required", tool=tool_name, args=args)
+                self._emit("confirmation_required", tool=tool_name, args=_redact(args))
                 return {"status": "confirmation_required",
                        "message": f"{tool_name} requires the user's explicit confirmation "
                                   "before it can run."}
@@ -196,7 +247,7 @@ class CommitGate:
         if kind == "state_modifying" or (kind == "read_only" and self.dedupe_read_only):
             dedupe_key = tool_name + "|" + _norm_args(args)
             if dedupe_key in self._executed:
-                self._emit("blocked_duplicate", tool=tool_name, args=args, kind=kind)
+                self._emit("blocked_duplicate", tool=tool_name, args=_redact(args), kind=kind)
                 return self._executed[dedupe_key]
 
         call_id = self._next_call_id()
@@ -205,11 +256,11 @@ class CommitGate:
 
         prior = self._pending.get(tool_name)
         if prior is not None and not prior.future.done():
-            self._emit("superseded", tool=tool_name, old_args=prior.args,
+            self._emit("superseded", tool=tool_name, old_args=_redact(prior.args),
                       old_call_id=prior.call_id, new_call_id=call_id)
 
         self._pending[tool_name] = _Pending(call_id, args, fut)
-        self._emit("buffered", tool=tool_name, args=args, call_id=call_id,
+        self._emit("buffered", tool=tool_name, args=_redact(args), call_id=call_id,
                   buffer_ms=self.buffer_ms)
 
         # P2: a realtime model can retract a tool call it already proposed (observed in
@@ -230,10 +281,27 @@ class CommitGate:
                 # instead of ever executing the stale one.
                 return await current.future
 
+            # H1: admission control -- a genuinely different-argument call to the same tool,
+            # repeated past a configured ceiling, is refused the same way a duplicate is (never
+            # reaches call_tool). Counts only committed calls, so a long same-tool correction
+            # chain (Paris -> Berlin -> ... -> Tokyo, all superseding each other) never trips
+            # this on its own -- only actually-executed calls count toward the budget.
+            if (self.max_calls_per_tool is not None
+                    and self._call_counts.get(tool_name, 0) >= self.max_calls_per_tool):
+                self._emit("call_budget_exceeded", tool=tool_name, args=_redact(current.args),
+                          limit=self.max_calls_per_tool)
+                budget_result = {"status": "call_budget_exceeded",
+                                 "message": f"{tool_name} has already been called "
+                                            f"{self.max_calls_per_tool} times this session."}
+                if not fut.done():
+                    fut.set_result(budget_result)
+                return budget_result
+
             # we're the winner: about to execute for real, exactly once. This is the one safe
             # point to fire an instant spoken acknowledgement (extension only) — anything before
             # this line could still be superseded by a correction, or now, cancelled.
             committed = True
+            self._call_counts[tool_name] = self._call_counts.get(tool_name, 0) + 1
             if self.on_committed is not None:
                 maybe_coro = self.on_committed(tool_name, current.args)
                 if asyncio.iscoroutine(maybe_coro):
@@ -241,7 +309,13 @@ class CommitGate:
 
             result = self.call_tool(tool_name, current.args)
             if asyncio.iscoroutine(result):
-                result = await result
+                # H1: a timeout is only meaningful here -- a sync call_tool (every tool in this
+                # codebase today) can't be interrupted mid-call without an executor, which none
+                # of these fast, in-memory mocks need.
+                if self.tool_timeout_s is not None:
+                    result = await asyncio.wait_for(result, timeout=self.tool_timeout_s)
+                else:
+                    result = await result
         except asyncio.CancelledError:
             if committed:
                 # too late to drop -- call_tool may already have run (or is synchronously
@@ -258,10 +332,24 @@ class CommitGate:
             if not fut.done():
                 fut.cancel()
             raise
+        except Exception as e:
+            # H1 bug fix, not just a new feature: this branch didn't exist before -- a real
+            # exception from call_tool (a bad mock-API arg, or now, a tool_timeout_s expiring)
+            # used to propagate straight out of propose() with fut left permanently incomplete.
+            # That's fine for THIS call's own awaiter (the exception reaches it directly), but
+            # anyone who was superseded and is instead awaiting THIS future (the "wait for
+            # whichever call wins" path, a few lines up) would hang forever, since nothing ever
+            # completed it. Setting the exception here lets that waiter re-raise the same error
+            # instead of hanging.
+            self._emit("tool_timeout" if isinstance(e, asyncio.TimeoutError) else "call_failed",
+                      tool=tool_name, call_id=call_id, error=repr(e))
+            if not fut.done():
+                fut.set_exception(e)
+            raise
 
         if kind == "state_modifying" or (kind == "read_only" and self.dedupe_read_only):
             self._executed[tool_name + "|" + _norm_args(current.args)] = result
-        self._emit("executed", tool=tool_name, args=current.args, result=result,
+        self._emit("executed", tool=tool_name, args=_redact(current.args), result=result,
                   call_id=call_id)
         if not fut.done():
             fut.set_result(result)

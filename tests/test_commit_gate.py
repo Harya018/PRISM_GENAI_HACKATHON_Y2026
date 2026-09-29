@@ -1,6 +1,9 @@
 import asyncio
+import json
 import sys
 import pathlib
+
+import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -359,3 +362,117 @@ def test_normalize_fn_runs_after_resolver_not_before():
     gate.normalize_fn = spy_normalize
     _run(gate.propose("search_flights", {"destination": "Denver"}))
     assert seen_by_normalize == [{"destination": "Denver"}]
+
+
+# --- H1: argument redaction (always on, log/stream only -- never touches call_tool's own args) ---
+
+def test_sensitive_args_are_redacted_in_the_log_but_not_in_call_tool():
+    calls_log = []
+
+    def call_tool(name, args):
+        calls_log.append((name, dict(args)))
+        return {"status": "success"}
+
+    schema = {"args": {"doc_type": {"type": "string"}, "doc_number": {"type": "string"}}}
+    gate = CommitGate(call_tool=call_tool, tool_kinds={"update_identity_doc": "state_modifying"},
+                      tool_schemas={"update_identity_doc": schema}, buffer_ms=10)
+    _run(gate.propose("update_identity_doc", {"doc_type": "passport", "doc_number": "X1234567"}))
+
+    # the real tool must still receive the real value
+    assert calls_log == [("update_identity_doc",
+                          {"doc_type": "passport", "doc_number": "X1234567"})]
+    # but nothing logged/streamed may contain it
+    for entry in gate.log:
+        assert "X1234567" not in json.dumps(entry, default=str)
+    executed = [e for e in gate.log if e["event"] == "executed"][0]
+    assert executed["args"]["doc_number"] == "***REDACTED***"
+    assert executed["args"]["doc_type"] == "passport", "non-sensitive args must pass through as-is"
+
+
+def test_redaction_covers_buffered_and_superseded_events_too():
+    schema = {"args": {"source_account": {"type": "string"}}}
+    gate = CommitGate(call_tool=lambda n, a: {"status": "success"},
+                      tool_kinds={"modify_autopay": "state_modifying"},
+                      tool_schemas={"modify_autopay": schema}, buffer_ms=200)
+
+    async def scenario():
+        first = asyncio.create_task(gate.propose("modify_autopay",
+                                                  {"source_account": "ACC-1111"}))
+        await asyncio.sleep(0.05)
+        second = asyncio.create_task(gate.propose("modify_autopay",
+                                                   {"source_account": "ACC-2222"}))
+        await first
+        await second
+
+    _run(scenario())
+    for entry in gate.log:
+        blob = json.dumps(entry, default=str)
+        assert "ACC-1111" not in blob and "ACC-2222" not in blob
+
+
+# --- H1: tool_timeout_s (default None -- only meaningful for an async call_tool) ---
+
+def test_tool_timeout_is_a_noop_by_default_even_for_a_slow_async_call():
+    async def slow_call_tool(name, args):
+        await asyncio.sleep(0.05)
+        return {"status": "success"}
+
+    gate = CommitGate(call_tool=slow_call_tool, tool_kinds={"search_flights": "read_only"},
+                      tool_schemas={"search_flights": FLIGHT_SCHEMA}, buffer_ms=10)
+    result = _run(gate.propose("search_flights", {"destination": "Denver"}))
+    assert result["status"] == "success"
+
+
+def test_tool_timeout_fires_and_does_not_hang_a_superseded_waiter():
+    """A superseded call awaits the winner's future -- before this fix, a timeout on the winner
+    would leave that future incomplete forever. Both the direct caller and the superseded
+    waiter must see the same TimeoutError instead of one of them hanging."""
+    async def hanging_call_tool(name, args):
+        await asyncio.sleep(10)   # far longer than the timeout below
+        return {"status": "success"}
+
+    gate = CommitGate(call_tool=hanging_call_tool, tool_kinds={"search_flights": "read_only"},
+                      tool_schemas={"search_flights": FLIGHT_SCHEMA}, buffer_ms=10,
+                      tool_timeout_s=0.05)
+    with pytest.raises(asyncio.TimeoutError):
+        _run(gate.propose("search_flights", {"destination": "Denver"}))
+    assert [e["event"] for e in gate.log][-1] == "tool_timeout"
+
+
+# --- H1: max_calls_per_tool (default None -- unbounded, current behavior) ---
+
+def test_max_calls_per_tool_is_unbounded_by_default():
+    gate, calls = _gate(buffer_ms=10)
+    for dest in ["Denver", "Paris", "Tokyo", "Cairo", "Lima"]:
+        _run(gate.propose("search_flights", {"destination": dest}))
+    assert len(calls) == 5
+
+
+def test_max_calls_per_tool_refuses_past_the_ceiling():
+    gate, calls = _gate(buffer_ms=10)
+    gate.max_calls_per_tool = 2
+    r1 = _run(gate.propose("search_flights", {"destination": "Denver"}))
+    r2 = _run(gate.propose("search_flights", {"destination": "Paris"}))
+    r3 = _run(gate.propose("search_flights", {"destination": "Tokyo"}))
+    assert len(calls) == 2, "a third, genuinely different call must be refused once at the ceiling"
+    assert r1["status"] == "success" and r2["status"] == "success"
+    assert r3["status"] == "call_budget_exceeded"
+    assert [e["event"] for e in gate.log][-1] == "call_budget_exceeded"
+
+
+def test_max_calls_per_tool_does_not_count_superseded_calls():
+    """A long same-tool correction chain must not itself burn the budget -- only calls that
+    actually reach call_tool count."""
+    gate, calls = _gate(buffer_ms=200)
+    gate.max_calls_per_tool = 1
+
+    async def scenario():
+        first = asyncio.create_task(gate.propose("search_flights", {"destination": "Paris"}))
+        await asyncio.sleep(0.02)
+        second = asyncio.create_task(gate.propose("search_flights", {"destination": "Berlin"}))
+        await first
+        await second
+
+    _run(scenario())
+    assert calls == [("search_flights", {"destination": "Berlin"})], (
+        "the superseded Paris call must not count against the budget")
