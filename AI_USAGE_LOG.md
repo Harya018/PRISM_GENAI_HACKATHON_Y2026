@@ -158,3 +158,92 @@ pipeline works correctly end to end. The on-screen "you said" transcript caption
 cosmetic display limitation of this specific preview model's ASR for this accent, not fixable
 by any parameter this SDK version exposes — confirmed by two independent live experiments, not
 assumed.
+
+## 2026-09-29 — Submission audit against the Theme 5 participant guide, and results/ fix
+
+User pasted the full participant guide and asked whether this submission matches it. Audited
+the repo against every checklist item. Solid: LiveKit agent on the official templates,
+one-command reproduction script, declared provider, README (architecture/setup/extension all
+covered), and no compliance violations (grepped `agent/`/`extension/` for hardcoded
+scenario refs — none; no external server calls beyond LiveKit/Google; `CommitGate` constructed
+fresh per job, so nothing leaks across scenarios).
+
+Found three real gaps: no demo video anywhere in the repo or the wider project folder; the
+slide deck (`docs/CollegeName_TeamName_Submission.pptx`, outside this repo) is still the
+unfilled organizer template — confirmed by extracting its slide XML text directly rather than
+assuming from the filename, slide 1 has literal placeholder dashes ("Team Name -"); and
+`results/ours/`/`results/baseline/` were empty directories, never committed, even though the
+real best-run data existed in an uncommitted sibling checkout (`Full-Duplex-Bench/v3/results/`).
+
+Fixed the results gap (the other two aren't code tasks): copied the real best-run reports
+(`ours`: 100/100 complete, 86.4% tool-selection accuracy; `baseline`: 51/100, zero coverage in
+two domains) into `results/{ours,baseline}/20260927_overnight_full/`, each with a
+`run_config.json` stating provider, agent script, judge, and completion status honestly —
+including flagging that a per-run seed wasn't independently recorded for this specific run
+rather than inventing one, and explicitly noting these are exact-match (`judge=none`) scores,
+not the official gpt-4o judge the graded re-run actually uses. Added `results/README.md`
+(index) and `results/OVERNIGHT_REPORT.md` (the detailed breakdown that run already had).
+
+Also found and fixed a real code bug while doing this: `scripts/build_dashboard_data.py`'s
+default `--fdb-root` pointed at a sibling folder (`../../Full-Duplex-Bench/v3`) that only
+exists on this specific development machine. `scripts/run_fdb_v3.sh` (the actual one-command
+reproduction script) clones FDB-v3 into `fdb-agent/.fdb-v3/v3` instead, so the README's
+documented "regenerate the dashboard after a new run" step would silently look in the wrong
+place on a fresh checkout. Fixed the default to check `.fdb-v3/v3` first, fall back to the
+sibling path second. Verified by re-running it: `docs/dashboard_data.json` regenerates
+byte-for-byte identical (`git diff` empty).
+
+**Deliberately not touched**: there's a deeper mismatch between `run_fdb_v3.sh`'s own
+evaluation-output filenames/location and what `build_dashboard_data.py` expects, which would
+need editing `run_fdb_v3.sh` itself to fully close. Per the standing rule to ask before changing
+anything on the graded reproduction/evaluation path, this was surfaced to the user rather than
+fixed without asking.
+
+## 2026-09-29 — Harness hardening (H1) pulled from another team's architecture write-up
+
+User pasted another Theme-5 team's project README (speculative retrieval, checkpoint-based
+interruption, a goal stack for topic swerves, an ephemeral filler channel, and a harness with
+admission control/timeouts/argument redaction) and asked which ideas were worth pulling in.
+Implemented three, in the shared `agent/commit_gate.py` (used by both the benchmark agent and
+the extension, so one change benefits both):
+
+- **Argument redaction**: every event `CommitGate` logs or streams (`self.log`, `on_event` —
+  our own telemetry, never what actually reaches `call_tool`) now redacts any arg whose *name*
+  matches a sensitive pattern (`doc_number`, `account`, `ssn`, `password`, `card_number`, `cvv`,
+  `pin`, `secret`, `api_key`, `token`). Name-pattern based rather than a hardcoded per-tool list,
+  so it also covers the extension's tools without upkeep. Always on — pure logging hardening,
+  zero change to what executes or what FDB-v3 scores.
+- **`tool_timeout_s`** (opt-in via `LK_TOOL_TIMEOUT_S`, default unbounded): wraps an *async*
+  `call_tool`'s await in `asyncio.wait_for`. Scoped honestly: none of this codebase's mock tools
+  are actually async today, so this is a forward-looking safety net, documented as exactly that
+  rather than oversold as protecting today's synchronous calls.
+- **`max_calls_per_tool`** (opt-in via `LK_MAX_CALLS_PER_TOOL`, default unbounded): admission
+  control against a runaway loop of genuinely-different-argument calls to the same tool —
+  distinct from the pre-existing exact-repeat dedupe. Counts only committed (actually-executed)
+  calls, so a long same-tool self-correction chain never trips it on its own.
+- **Real bug fixed while adding the timeout**: a non-cancellation exception from `call_tool`
+  (including a newly-possible timeout) used to leave a *superseded* caller's future permanently
+  incomplete — that caller would hang forever awaiting a future nothing ever completes. Now the
+  exception is also set on that future, so it re-raises instead of hanging.
+
+**Investigated and deliberately NOT adopted** (documented directly in `commit_gate.py`'s own
+module docstring, not just here): starting a read-only tool call speculatively, in the
+background, the instant it's proposed — before the buffer window confirms it won't be
+superseded — to overlap the tool's own latency with the correction-detection buffer. Checked
+`Full-Duplex-Bench/v3/mock_apis.py` directly before implementing anything: `MockAPIRegistry.call()`
+logs every invocation into a `CallLogger` the instant `call_tool` runs, and that log is what
+FDB-v3 reads back as `actual_tool_calls` for scoring. Speculating means invoking `call_tool`
+before knowing whether a call will be superseded — which would get the superseded call
+permanently recorded and penalized as an "extra call," exactly the failure mode the whole
+commit-gate architecture exists to prevent. Safe for a pure information-retrieval system with no
+external logging tied to invocation (which is what the other team's own system is); not safe
+here, where the act of calling itself is what gets scored. Caught this before writing any of
+the risky code, not after.
+
+7 new tests added (`tests/test_commit_gate.py`, 45 total, up from 38) covering: redaction
+reaches `call_tool` unredacted but never the log; redaction on the `superseded`/`buffered`
+events too; timeout is a no-op by default even for a slow async tool; a timeout fires and does
+not hang a superseded waiter; the call budget is unbounded by default; the budget refuses past
+its ceiling; and the budget does not count superseded calls. All 45 pass. Both flags wired
+opt-in, unset by default, in both `agent/lk_agent.py` and `extension/device_agent.py` — the
+extension worker was restarted on this code and registered cleanly.
