@@ -31,9 +31,10 @@ These are additions to the `v3/` working copy, not changes to existing benchmark
   done). Infrastructure only; doesn't touch what either agent does.
 - `run_baseline_with_retry.py` — earlier, simpler retry wrapper (superseded by
   `overnight_runner.py` for anything long-running, kept for quick one-off checks).
-- `lk_agent_ours.py`, `commit_gate.py`, `resolver.py`, `instructions.py` — our submitted agent
-  and its supporting modules, copied in from `fdb-agent/agent/` (see that project's own README
-  for what these do). These implement our agent's actual behavior and are the thing being
+- `lk_agent_ours.py`, `commit_gate.py`, `resolver.py`, `instructions.py`, `normalize.py` — our
+  submitted agent and its supporting modules, copied in from `fdb-agent/agent/` (see that
+  project's own README for what these do). These implement our agent's actual behavior and are
+  the thing being
   evaluated, not a harness patch.
 
 ## Applying these to a fresh clone

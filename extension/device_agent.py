@@ -52,6 +52,13 @@ load_dotenv(env_path)
 COMMIT_BUFFER_MS = float(os.getenv("LK_COMMIT_BUFFER_MS", "400"))
 registry = DeviceAPIRegistry()
 
+# --- Extension-only config flags (Step 6, all default OFF/unset = behavior already tested) ---
+EXT_SESSION_RESUMPTION = os.getenv("LK_EXT_SESSION_RESUMPTION", "").lower() in ("1", "true", "yes")  # X1
+EXT_CONTEXT_COMPRESSION = os.getenv("LK_EXT_CONTEXT_COMPRESSION", "").lower() in ("1", "true", "yes")  # X1
+EXT_MEDIA_RESOLUTION = os.getenv("LK_EXT_MEDIA_RESOLUTION")   # unset|LOW|MEDIUM|HIGH -- X2
+EXT_PROACTIVITY = os.getenv("LK_EXT_PROACTIVITY", "").lower() in ("1", "true", "yes")  # X3
+EXT_AFFECTIVE_DIALOG = os.getenv("LK_EXT_AFFECTIVE_DIALOG", "").lower() in ("1", "true", "yes")  # X3
+
 TOOL_KINDS = {
     "lookup_manual": "read_only",
     "get_device_status": "read_only",
@@ -202,7 +209,7 @@ server = AgentServer(load_threshold=0.95, num_idle_processes=1, port=8091)
 # handed a benchmark room, and a benchmark agent (fdb-ours/fdb-baseline) can never be handed
 # this extension's room, regardless of what else happens to be registered at the same time.
 async def entrypoint(ctx: agents.JobContext):
-    model = google.realtime.RealtimeModel(
+    model_kwargs = dict(
         model="gemini-2.5-flash-native-audio-preview-12-2025",
         voice=os.getenv("GOOGLE_VOICE", "Puck"),
         # Explicit English, both for the model's own responses (language=) and for input
@@ -213,6 +220,36 @@ async def entrypoint(ctx: agents.JobContext):
         input_audio_transcription=genai_types.AudioTranscriptionConfig(
             language_codes=[os.getenv("GOOGLE_LANGUAGE", "en-US")]),
     )
+
+    # X1: session longevity. Gemini Live audio+video sessions cap at ~2 minutes without
+    # compression and the underlying connection at ~10 minutes; both are opt-in so the
+    # already-tested short-session behavior is unaffected until these are deliberately enabled
+    # and a multi-minute session is tried live.
+    if EXT_CONTEXT_COMPRESSION:
+        model_kwargs["context_window_compression"] = genai_types.ContextWindowCompressionConfig(
+            sliding_window=genai_types.SlidingWindow())
+    if EXT_SESSION_RESUMPTION:
+        model_kwargs["session_resumption"] = genai_types.SessionResumptionConfig()
+
+    # X2: video cost/latency. media_resolution=LOW reduces per-frame token cost on the model
+    # side; the client-side ~1fps/320x240 throttle (extension/dashboard.html) stays as the
+    # actual frame-rate control regardless, since this livekit-agents version still has no
+    # server-side video sampler to throttle capture rate itself.
+    if EXT_MEDIA_RESOLUTION in ("LOW", "MEDIUM", "HIGH"):
+        model_kwargs["media_resolution"] = getattr(
+            genai_types.MediaResolution, f"MEDIA_RESOLUTION_{EXT_MEDIA_RESOLUTION}")
+
+    # X3: 2.5-only tone/attention behaviors -- proactivity ignores background/off-device speech,
+    # affective dialog gives a calmer tone for a frustrated user. The plugin switches to v1alpha
+    # automatically when either is set (confirmed via the installed SDK's own NotGivenOr typing
+    # on these two params). Off by default: keep only if a live test shows tool-calling doesn't
+    # regress.
+    if EXT_PROACTIVITY:
+        model_kwargs["proactivity"] = True
+    if EXT_AFFECTIVE_DIALOG:
+        model_kwargs["enable_affective_dialog"] = True
+
+    model = google.realtime.RealtimeModel(**model_kwargs)
 
     turn = TurnTranscript()
     stager = LatencyStager(ctx.room)
@@ -245,7 +282,18 @@ async def entrypoint(ctx: agents.JobContext):
 
     fnc_ctx = DeviceAssistantFnc(turn, gate, ctx.room.name)
     tools = llm.find_function_tools(fnc_ctx)
-    session = AgentSession(llm=model, tools=tools)
+    session_kwargs = {}
+    if EXT_MEDIA_RESOLUTION:
+        # X2, corrected finding: a real server-side video sampler DOES exist in the installed
+        # livekit-agents version (AgentSession(video_sampler=...), confirmed by reading the SDK
+        # source directly, not assumed) -- our earlier conclusion that no such control existed
+        # was wrong. Wire it in as a genuine server-side throttle: speak while the user talks
+        # gets a normal 1fps, silence drops to 0.2fps. The client-side ~1fps/320x240 capture
+        # throttle (extension/dashboard.html) stays regardless, since that one also cuts upload
+        # bandwidth, which this sampler alone doesn't.
+        from livekit.agents.voice.agent_session import VoiceActivityVideoSampler
+        session_kwargs["video_sampler"] = VoiceActivityVideoSampler(speaking_fps=1.0, silent_fps=0.2)
+    session = AgentSession(llm=model, tools=tools, **session_kwargs)
 
     def _publish(topic: str, payload: dict) -> None:
         data = json.dumps(payload, default=str).encode("utf-8")

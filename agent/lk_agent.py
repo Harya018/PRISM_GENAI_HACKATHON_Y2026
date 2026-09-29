@@ -39,7 +39,9 @@ except ImportError:
     registry = None
 
 from commit_gate import CommitGate
-from instructions import VOICE_AGENT_INSTRUCTIONS, KEY_INFO_FIRST_ADDENDUM
+from instructions import (VOICE_AGENT_INSTRUCTIONS, VOICE_AGENT_INSTRUCTIONS_V2,
+                          KEY_INFO_FIRST_ADDENDUM)
+from normalize import normalize_args
 
 env_path = os.path.join(os.path.dirname(__file__), ".env.local")
 load_dotenv(env_path)
@@ -54,6 +56,18 @@ _THINKING_BUDGET_RAW = os.getenv("LK_THINKING_BUDGET")   # unset -> don't pass t
 THINKING_BUDGET = int(_THINKING_BUDGET_RAW) if _THINKING_BUDGET_RAW is not None else None
 END_SPEECH_SENSITIVITY = os.getenv("LK_END_SPEECH_SENSITIVITY")   # unset|LOW|HIGH
 KEY_INFO_FIRST = os.getenv("LK_KEY_INFO_FIRST", "").lower() in ("1", "true", "yes")
+NORMALIZE_ARGS = os.getenv("LK_NORMALIZE_ARGS", "").lower() in ("1", "true", "yes")   # A1
+READONLY_DEDUPE = os.getenv("LK_READONLY_DEDUPE", "").lower() in ("1", "true", "yes")   # P1
+TOOL_DESC_V2 = os.getenv("LK_TOOL_DESC_V2", "").lower() in ("1", "true", "yes")   # A2
+INSTRUCTIONS_V2 = os.getenv("LK_INSTRUCTIONS_V2", "").lower() in ("1", "true", "yes")   # P3
+
+
+def _desc(base: str, enriched: str) -> str:
+    """A2: flag-gated tool description text -- LK_TOOL_DESC_V2 unset/0 keeps the exact
+    descriptions already scored on the last valid full-100 run; =1 switches every tool to the
+    enriched version (when to call it, exact arg format with an example, "call once per
+    distinct request", "don't call for verification") for the dev-subset sweep to evaluate."""
+    return enriched if TOOL_DESC_V2 else base
 
 # same compatibility fix as the (locally patched) stock template: plugins must be registered on
 # the main thread in current livekit-agents — RESEARCH_FDB.md ss3.
@@ -209,79 +223,123 @@ class AssistantFnc:
         self._log_tool_call(name, args, self.tracker.tool_start_at, self.tracker.tool_end_at)
         return json.dumps(result)
 
-    @ai_callable_decorator(description="Search for available flights to a destination, once "
-                                       "the destination and date are settled (not mid-correction).")
+    @ai_callable_decorator(description=_desc(
+        "Search for available flights to a destination, once the destination and date are "
+        "settled (not mid-correction).",
+        "Search for available flights. Call once the destination and date are both settled "
+        "(not mid-correction) -- e.g. destination='Tokyo', date='July 15'. Call once per "
+        "distinct trip request; do not call again just to double-check a result you already "
+        "have."))
     async def search_flights(self, destination: str, date: str):
         """Args: destination: city/airport. date: travel date, free-form."""
         return await self._call("search_flights", destination=destination, date=date)
 
-    @ai_callable_decorator(description="Book a flight ticket. Only call once, for a confirmed "
-                                       "passenger name.")
+    @ai_callable_decorator(description=_desc(
+        "Book a flight ticket. Only call once, for a confirmed passenger name.",
+        "Book a flight ticket once the passenger's full name is confirmed -- e.g. "
+        "passenger_name='Jordan Lee'. Call exactly once per booking request; never call it "
+        "again to verify the booking went through, the result already confirms that."))
     async def book_flight(self, passenger_name: str):
         """Args: passenger_name: full name of the passenger."""
         return await self._call("book_flight", passenger_name=passenger_name)
 
-    @ai_callable_decorator(description="Update a simulated user identity document (passport, "
-                                       "license). Simulated environment — always permitted.")
+    @ai_callable_decorator(description=_desc(
+        "Update a simulated user identity document (passport, license). Simulated environment "
+        "— always permitted.",
+        "Update a simulated identity document (passport, license) once the document type and "
+        "number are both settled -- e.g. doc_type='passport', doc_number='X1234567'. Simulated "
+        "environment, always permitted. Call once per distinct correction; don't call again "
+        "just to confirm the update took effect."))
     async def update_identity_doc(self, doc_type: str, doc_number: str):
         """Args: doc_type: e.g. 'passport'. doc_number: the identifier string."""
         return await self._call("update_identity_doc", doc_type=doc_type, doc_number=doc_number)
 
-    @ai_callable_decorator(description="Get benefits for a credit card type. Always call this "
-                                       "rather than answering from memory.")
+    @ai_callable_decorator(description=_desc(
+        "Get benefits for a credit card type. Always call this rather than answering from "
+        "memory.",
+        "Get benefits for a credit card type -- e.g. card_type='platinum'. Always call this "
+        "rather than answering from memory; call once per distinct card type asked about, not "
+        "again just to re-check the same answer."))
     async def get_card_benefits(self, card_type: str):
         """Args: card_type: e.g. 'platinum' or 'gold'."""
         return await self._call("get_card_benefits", card_type=card_type)
 
-    @ai_callable_decorator(description="Get the current foreign exchange rate. Always call this "
-                                       "rather than guessing a rate.")
+    @ai_callable_decorator(description=_desc(
+        "Get the current foreign exchange rate. Always call this rather than guessing a rate.",
+        "Get the current foreign exchange rate -- e.g. amount=150, from_currency='EUR', "
+        "to_currency='USD'. Always call this rather than guessing a rate; call once per "
+        "distinct conversion asked about, not again just to verify the same result."))
     async def get_exchange_rate(self, amount: float, from_currency: str, to_currency: str):
         """Args: amount, from_currency (3-letter code), to_currency (3-letter code)."""
         return await self._call("get_exchange_rate", amount=amount,
                                 from_currency=from_currency, to_currency=to_currency)
 
-    @ai_callable_decorator(description="Modify autopay billing settings. Only call once the "
-                                       "bill type and source account are both confirmed.")
+    @ai_callable_decorator(description=_desc(
+        "Modify autopay billing settings. Only call once the bill type and source account are "
+        "both confirmed.",
+        "Modify autopay billing settings once the bill type and source account are both "
+        "confirmed -- e.g. bill_type='credit_card', source_account='checking'. Call once per "
+        "distinct change; don't call again just to verify it was applied."))
     async def modify_autopay(self, bill_type: str, source_account: str):
         """Args: bill_type: e.g. 'credit_card'. source_account: e.g. 'checking'."""
         return await self._call("modify_autopay", bill_type=bill_type,
                                 source_account=source_account)
 
-    @ai_callable_decorator(description="Search for rental apartments.")
+    @ai_callable_decorator(description=_desc(
+        "Search for rental apartments.",
+        "Search for rental apartments once city, bedroom count, and max price are all settled "
+        "-- e.g. city='Atlanta', bedrooms=2, max_price=1800. Call once per distinct search; "
+        "don't call again just to re-check the same result."))
     async def search_apartments(self, city: str, bedrooms: int, max_price: float):
         """Args: city, bedrooms (count), max_price (monthly budget)."""
         return await self._call("search_apartments", city=city, bedrooms=bedrooms,
                                 max_price=max_price)
 
-    @ai_callable_decorator(description="Calculate commute duration between two addresses. "
-                                       "Always call this rather than estimating.")
+    @ai_callable_decorator(description=_desc(
+        "Calculate commute duration between two addresses. Always call this rather than "
+        "estimating.",
+        "Calculate commute duration between two addresses -- e.g. origin_address='Oak Street', "
+        "destination_address='downtown', mode='driving'. Always call this rather than "
+        "estimating; call once per distinct route asked about, not again just to re-check it."))
     async def calculate_commute(self, origin_address: str, destination_address: str,
                                 mode: str = "driving"):
         """Args: origin_address, destination_address, mode (default 'driving')."""
         return await self._call("calculate_commute", origin_address=origin_address,
                                 destination_address=destination_address, mode=mode)
 
-    @ai_callable_decorator(description="Update a search filter once its final name and value "
-                                       "are both settled.")
+    @ai_callable_decorator(description=_desc(
+        "Update a search filter once its final name and value are both settled.",
+        "Update a search filter once its final name and value are both settled -- e.g. "
+        "filter_name='max_price', value='1800'. Call once per distinct filter change; don't "
+        "call again just to verify it took effect."))
     async def update_search_filter(self, filter_name: str, value: str):
         """Args: filter_name, value."""
         return await self._call("update_search_filter", filter_name=filter_name, value=value)
 
-    @ai_callable_decorator(description="Track a physical package's delivery status for a "
-                                       "confirmed order id. Always call this rather than "
-                                       "answering from memory.")
+    @ai_callable_decorator(description=_desc(
+        "Track a physical package's delivery status for a confirmed order id. Always call this "
+        "rather than answering from memory.",
+        "Track a physical package's delivery status for a confirmed order id -- e.g. "
+        "order_id='ABC123'. Always call this rather than answering from memory; call once per "
+        "distinct order asked about, not again just to re-check the same status."))
     async def track_order(self, order_id: str):
         """Args: order_id."""
         return await self._call("track_order", order_id=order_id)
 
-    @ai_callable_decorator(description="Search the product catalog. Always call this rather "
-                                       "than answering from memory.")
+    @ai_callable_decorator(description=_desc(
+        "Search the product catalog. Always call this rather than answering from memory.",
+        "Search the product catalog once the query (and, if given, a max price) are settled -- "
+        "e.g. query='mechanical keyboard', max_price=200. Always call this rather than "
+        "answering from memory; call once per distinct search, not again just to re-check it."))
     async def search_products(self, query: str, max_price: float = None):
         """Args: query, max_price (optional budget)."""
         return await self._call("search_products", query=query, max_price=max_price)
 
-    @ai_callable_decorator(description="Add an item to the cart, once the product and quantity "
-                                       "are both confirmed.")
+    @ai_callable_decorator(description=_desc(
+        "Add an item to the cart, once the product and quantity are both confirmed.",
+        "Add an item to the cart once the product and quantity are both confirmed -- e.g. "
+        "product_id='P52', quantity=2. Call once per distinct add request; don't call again "
+        "just to verify it's in the cart."))
     async def add_to_cart(self, product_id: str, quantity: int = 1):
         """Args: product_id, quantity (default 1)."""
         return await self._call("add_to_cart", product_id=product_id, quantity=quantity)
@@ -289,7 +347,10 @@ class AssistantFnc:
 
 class VoiceAgent(Agent):
     def __init__(self) -> None:
-        instructions = VOICE_AGENT_INSTRUCTIONS
+        # P3, flag-gated: LK_INSTRUCTIONS_V2 switches to the reorganized (persona ->
+        # conversational rules -> tool flow -> guardrails) instructions.py variant instead of
+        # the already-scored default.
+        instructions = VOICE_AGENT_INSTRUCTIONS_V2 if INSTRUCTIONS_V2 else VOICE_AGENT_INSTRUCTIONS
         if KEY_INFO_FIRST:   # L2, flag-gated -- see instructions.py's KEY_INFO_FIRST_ADDENDUM
             instructions = instructions + KEY_INFO_FIRST_ADDENDUM
         super().__init__(instructions=instructions)
@@ -315,7 +376,9 @@ async def entrypoint(ctx: agents.JobContext):
         return registry.call(name, **args)
 
     gate = CommitGate(call_tool=_call_tool_sync, tool_kinds=TOOL_KINDS,
-                      tool_schemas=TOOL_SCHEMAS, buffer_ms=COMMIT_BUFFER_MS)
+                      tool_schemas=TOOL_SCHEMAS, buffer_ms=COMMIT_BUFFER_MS,
+                      normalize_fn=normalize_args if NORMALIZE_ARGS else None,
+                      dedupe_read_only=READONLY_DEDUPE)
 
     fnc_ctx = AssistantFnc(tracker, turn, gate, ctx.room.name)
     tools = llm.find_function_tools(fnc_ctx)

@@ -86,6 +86,7 @@ else
   cp "${REPRO_ROOT}/agent/commit_gate.py" "${FDB_DIR}/v3/commit_gate.py"
   cp "${REPRO_ROOT}/agent/resolver.py" "${FDB_DIR}/v3/resolver.py"
   cp "${REPRO_ROOT}/agent/instructions.py" "${FDB_DIR}/v3/instructions.py"
+  cp "${REPRO_ROOT}/agent/normalize.py" "${FDB_DIR}/v3/normalize.py"
   AGENT_SCRIPT="lk_agent_ours.py"
   DISPATCH_NAME="fdb-ours"                 # must match agent/lk_agent.py's own agent_name
 fi

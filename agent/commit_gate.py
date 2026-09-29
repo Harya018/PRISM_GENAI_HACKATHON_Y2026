@@ -90,6 +90,27 @@ class CommitGate:
                                                                           # without risking a
                                                                           # premature/superseded
                                                                           # utterance
+    normalize_fn: Optional[Callable[[str, Dict[str, Any]], Dict[str, Any]]] = None   # A1,
+                                                                          # additive/optional:
+                                                                          # agent/normalize.py's
+                                                                          # normalize_args, only
+                                                                          # wired in when
+                                                                          # LK_NORMALIZE_ARGS=1
+                                                                          # (agent/lk_agent.py) —
+                                                                          # applied AFTER the
+                                                                          # resolver, not before:
+                                                                          # the resolver matches
+                                                                          # stale values by their
+                                                                          # raw string form (see
+                                                                          # _apply_resolver), so
+                                                                          # normalizing types
+                                                                          # first would break
+                                                                          # that string match
+    dedupe_read_only: bool = False   # P1, default off: when True, an identical (tool,
+                                     # normalized args) READ-ONLY call is also served from the
+                                     # dedupe cache instead of re-executing — off by default
+                                     # because read-only re-calls were never penalized before
+                                     # this flag existed and this changes real behavior
     _pending: Dict[str, _Pending] = field(default_factory=dict)
     _executed: Dict[str, Any] = field(default_factory=dict)   # dedupe key -> result
     _confirmed: set = field(default_factory=set)   # confirm_required tools cleared this session
@@ -159,6 +180,8 @@ class CommitGate:
         result of whichever later call superseded it)."""
         kind = self.tool_kinds.get(tool_name, "read_only")
         args = self._apply_resolver(tool_name, args, turn_transcript)
+        if self.normalize_fn is not None:   # A1, off unless LK_NORMALIZE_ARGS=1
+            args = self.normalize_fn(tool_name, args)
 
         if tool_name in self.confirm_required and tool_name not in self._confirmed:
             if turn_transcript and _CONFIRMATION_RE.search(turn_transcript):
@@ -170,10 +193,10 @@ class CommitGate:
                        "message": f"{tool_name} requires the user's explicit confirmation "
                                   "before it can run."}
 
-        if kind == "state_modifying":
+        if kind == "state_modifying" or (kind == "read_only" and self.dedupe_read_only):
             dedupe_key = tool_name + "|" + _norm_args(args)
             if dedupe_key in self._executed:
-                self._emit("blocked_duplicate", tool=tool_name, args=args)
+                self._emit("blocked_duplicate", tool=tool_name, args=args, kind=kind)
                 return self._executed[dedupe_key]
 
         call_id = self._next_call_id()
@@ -189,27 +212,54 @@ class CommitGate:
         self._emit("buffered", tool=tool_name, args=args, call_id=call_id,
                   buffer_ms=self.buffer_ms)
 
-        await asyncio.sleep(self.buffer_ms / 1000.0)
+        # P2: a realtime model can retract a tool call it already proposed (observed in
+        # production logs as the provider's own "server cancelled tool calls" event, which
+        # LiveKit surfaces to us as this coroutine's task being cancelled). Before this fix,
+        # a CancelledError here propagated straight out of propose() with no cleanup: the
+        # _pending entry for this call_id was left behind with its future never resolved, so a
+        # later call to the same tool would see it as "not done" and wrongly log a "superseded"
+        # event for a call that was actually dropped by cancellation, and anything awaiting
+        # that dangling future directly would hang forever.
+        committed = False
+        try:
+            await asyncio.sleep(self.buffer_ms / 1000.0)
 
-        current = self._pending.get(tool_name)
-        if current is None or current.call_id != call_id:
-            # a later call superseded us before the buffer elapsed — wait for its result
-            # instead of ever executing the stale one.
-            return await current.future
+            current = self._pending.get(tool_name)
+            if current is None or current.call_id != call_id:
+                # a later call superseded us before the buffer elapsed — wait for its result
+                # instead of ever executing the stale one.
+                return await current.future
 
-        # we're the winner: about to execute for real, exactly once. This is the one safe point
-        # to fire an instant spoken acknowledgement (extension only) — anything before this line
-        # could still be superseded by a correction.
-        if self.on_committed is not None:
-            maybe_coro = self.on_committed(tool_name, current.args)
-            if asyncio.iscoroutine(maybe_coro):
-                await maybe_coro
+            # we're the winner: about to execute for real, exactly once. This is the one safe
+            # point to fire an instant spoken acknowledgement (extension only) — anything before
+            # this line could still be superseded by a correction, or now, cancelled.
+            committed = True
+            if self.on_committed is not None:
+                maybe_coro = self.on_committed(tool_name, current.args)
+                if asyncio.iscoroutine(maybe_coro):
+                    await maybe_coro
 
-        result = self.call_tool(tool_name, current.args)
-        if asyncio.iscoroutine(result):
-            result = await result
+            result = self.call_tool(tool_name, current.args)
+            if asyncio.iscoroutine(result):
+                result = await result
+        except asyncio.CancelledError:
+            if committed:
+                # too late to drop -- call_tool may already have run (or is synchronously
+                # certain to have completed, for the sync call_tool this codebase always uses).
+                # Can't be undone; log and count it rather than pretend it didn't happen.
+                self._emit("cancelled_after_committed", tool=tool_name, call_id=call_id)
+            else:
+                # dropped cleanly before execution -- the normal, expected outcome of a
+                # server-side cancellation racing our buffer window.
+                still_pending = self._pending.get(tool_name)
+                if still_pending is not None and still_pending.call_id == call_id:
+                    del self._pending[tool_name]
+                self._emit("cancelled", tool=tool_name, call_id=call_id)
+            if not fut.done():
+                fut.cancel()
+            raise
 
-        if kind == "state_modifying":
+        if kind == "state_modifying" or (kind == "read_only" and self.dedupe_read_only):
             self._executed[tool_name + "|" + _norm_args(current.args)] = result
         self._emit("executed", tool=tool_name, args=current.args, result=result,
                   call_id=call_id)

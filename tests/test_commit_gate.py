@@ -250,3 +250,112 @@ def test_log_is_transparent_and_ordered():
     _run(gate.propose("search_flights", {"destination": "Denver"}))
     kinds = [e["event"] for e in gate.log]
     assert kinds == ["buffered", "executed"]
+
+
+# --- P1: read-only dedupe (flag-gated via dedupe_read_only, default False) ---
+
+def test_readonly_call_not_deduped_by_default():
+    """dedupe_read_only defaults to False -- a repeated identical read-only call must still
+    execute twice, exactly as every run before this flag existed."""
+    gate, calls = _gate(buffer_ms=10)
+    _run(gate.propose("search_flights", {"destination": "Denver"}))
+    _run(gate.propose("search_flights", {"destination": "Denver"}))
+    assert len(calls) == 2
+
+
+def test_readonly_call_deduped_when_flag_enabled():
+    gate, calls = _gate(buffer_ms=10)
+    gate.dedupe_read_only = True
+    r1 = _run(gate.propose("search_flights", {"destination": "Denver"}))
+    r2 = _run(gate.propose("search_flights", {"destination": "Denver"}))
+    assert len(calls) == 1, "second identical read-only call must be served from cache"
+    assert r2 == r1
+    assert [e["event"] for e in gate.log][-1] == "blocked_duplicate"
+
+
+def test_readonly_dedupe_does_not_match_different_args():
+    gate, calls = _gate(buffer_ms=10)
+    gate.dedupe_read_only = True
+    _run(gate.propose("search_flights", {"destination": "Denver"}))
+    _run(gate.propose("search_flights", {"destination": "Paris"}))
+    assert len(calls) == 2, "different args must never be treated as a duplicate"
+
+
+# --- A1: normalize_fn hook (flag-gated, default None -- see agent/normalize.py) ---
+
+def test_normalize_fn_not_applied_when_unset():
+    gate, calls = _gate(buffer_ms=10)
+    _run(gate.propose("search_flights", {"destination": "denver"}))
+    assert calls == [("search_flights", {"destination": "denver"})], \
+        "with no normalize_fn, args must reach call_tool completely unchanged"
+
+
+def test_normalize_fn_applied_before_execution():
+    gate, calls = _gate(buffer_ms=10)
+    gate.normalize_fn = lambda tool, args: {**args, "destination": args["destination"].title()}
+    _run(gate.propose("search_flights", {"destination": "denver"}))
+    assert calls == [("search_flights", {"destination": "Denver"})], \
+        "call_tool must receive the NORMALIZED args, not the original ones"
+
+
+# --- P2: cancellation dropped cleanly before execution, no dangling pending state ---
+
+def test_cancellation_during_buffer_drops_call_and_cleans_up_pending():
+    """Simulates a realtime provider retracting a tool call it already proposed (observed in
+    production as "server cancelled tool calls") -- LiveKit surfaces this as the propose() task
+    being cancelled. call_tool must never run, and the _pending entry must not be left dangling
+    (or a later call to the same tool would wrongly see it as still in-flight)."""
+    gate, calls = _gate(buffer_ms=200)
+
+    async def scenario():
+        task = asyncio.create_task(gate.propose("search_flights", {"destination": "Paris"}))
+        await asyncio.sleep(0.05)   # well inside the 200ms buffer window
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return task
+
+    task = _run(scenario())
+    assert calls == [], "call_tool must never run for a cancelled buffered call"
+    assert task.cancelled()
+    assert "search_flights" not in gate._pending, "cancelled call must not leave a dangling pending entry"
+    assert [e["event"] for e in gate.log][-1] == "cancelled"
+
+
+def test_cancellation_does_not_block_a_later_real_call():
+    """After a cancellation, a genuinely new call to the same tool must behave normally (not be
+    mistaken for "superseding" a dangling entry, and not hang on a stale future)."""
+    gate, calls = _gate(buffer_ms=100)
+
+    async def scenario():
+        task = asyncio.create_task(gate.propose("search_flights", {"destination": "Paris"}))
+        await asyncio.sleep(0.02)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        # a later, real call for the same tool must complete normally
+        return await gate.propose("search_flights", {"destination": "Berlin"})
+
+    result = _run(scenario())
+    assert calls == [("search_flights", {"destination": "Berlin"})]
+    assert result["echo"]["destination"] == "Berlin"
+
+
+def test_normalize_fn_runs_after_resolver_not_before():
+    """Order matters: the resolver matches stale values by their raw string form (see
+    _apply_resolver), so normalize_fn must never run before it -- this test proves normalize_fn
+    sees whatever the resolver already decided, not the pre-resolver raw args."""
+    gate, calls = _gate(buffer_ms=10)
+    seen_by_normalize = []
+
+    def spy_normalize(tool, args):
+        seen_by_normalize.append(dict(args))
+        return args
+
+    gate.normalize_fn = spy_normalize
+    _run(gate.propose("search_flights", {"destination": "Denver"}))
+    assert seen_by_normalize == [{"destination": "Denver"}]
