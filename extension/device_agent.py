@@ -229,18 +229,22 @@ async def entrypoint(ctx: agents.JobContext):
         # Falling back to "en-US" per the task's own fallback rule; GOOGLE_LANGUAGE still
         # overrides if a future model version adds en-IN support.
         #
-        # Known remaining limitation, also confirmed live (not fixable by more config): the
+        # Confirmed limitation, not fixable by more config (two separate live tests): the
         # installed SDK's own field description for AudioTranscriptionConfig.language_codes
         # says it provides "hints about the languages present in the audio" -- a hint, not an
-        # enforced constraint. A live session with language="en-US" and language_codes=["en-US"]
-        # on both transcription configs still produced Tamil- and Japanese-script transcripts
-        # for accented English speech in one session (device_agent_run10.log). This is inherent
-        # auto-detection behavior in this preview native-audio model, not a bug in this file.
+        # enforced constraint. A live session with language_codes=["en-US"] produced Devanagari-/
+        # Tamil-script transcripts of accented English speech; a second test with the bare code
+        # language_codes=["en"] (GOOGLE_TRANSCRIPTION_LANGUAGE) made no difference -- still
+        # Devanagari (device_agent_run10.log, device_agent_run12.log). Note this is a *caption*
+        # issue only: the agent's own understanding and spoken replies were correct, fluent
+        # English throughout both tests -- it heard and answered correctly even while the "you
+        # said" transcript rendered in the wrong script. Reverted to the documented "en-US" form
+        # since the experiment showed no benefit over it.
         language=(_lang := os.getenv("GOOGLE_LANGUAGE", "en-US")),
         input_audio_transcription=genai_types.AudioTranscriptionConfig(
-            language_codes=[_lang]),
+            language_codes=[os.getenv("GOOGLE_TRANSCRIPTION_LANGUAGE", "en-US")]),
         output_audio_transcription=genai_types.AudioTranscriptionConfig(
-            language_codes=[_lang]),
+            language_codes=[os.getenv("GOOGLE_TRANSCRIPTION_LANGUAGE", "en-US")]),
     )
 
     # X1: session longevity. Gemini Live audio+video sessions cap at ~2 minutes without

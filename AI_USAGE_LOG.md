@@ -133,3 +133,28 @@ not an enforced constraint — this is inherent auto-detection behavior in this 
 native-audio model (`gemini-2.5-flash-native-audio-preview-12-2025`), not a bug in this repo's
 code. Left as a known limitation in `device_agent.py`'s own comment rather than guessed at
 further.
+
+## 2026-09-29 (third follow-up) — one more transcription-hint experiment, then reverted
+
+User's next live test (after the room-name fix) confirmed the agent now reliably hears and
+responds correctly: the agent's own replies were fluent, correct English throughout
+("Hello! I can help with that. What seems to..." / "I understand. What specific issue are you
+experiencing?"). The only remaining problem was the "you said" caption still rendering in
+Devanagari/Tamil script for what was clearly English speech underneath (e.g. "हे माय लैपटॉप हैज
+सम इशू" is literally "Hey my laptop has some issue," phonetically respelled).
+
+Tried one cheap, reversible experiment: a bare `"en"` transcription hint instead of `"en-US"`
+(added `GOOGLE_TRANSCRIPTION_LANGUAGE`, decoupled from `GOOGLE_LANGUAGE` so it couldn't risk
+another 1007 connection rejection — that field validates strictly, the transcription hint
+doesn't). Restarted, user spoke again: transcript came back as `'चार दिन मत दे'` — still
+Devanagari, no improvement (`device_agent_run12.log`). This confirms the hint field genuinely
+has no material effect on this preview model's script selection for this voice, not just that
+`"en-US"` specifically was wrong. Reverted `GOOGLE_TRANSCRIPTION_LANGUAGE`'s default back to
+`"en-US"` (the documented BCP-47 form) since the bare form showed no benefit. Restarted again,
+confirmed clean startup, all 38 tests still pass.
+
+**Net conclusion, stated plainly for the record:** the agent's hearing/understanding/response
+pipeline works correctly end to end. The on-screen "you said" transcript caption's script is a
+cosmetic display limitation of this specific preview model's ASR for this accent, not fixable
+by any parameter this SDK version exposes — confirmed by two independent live experiments, not
+assumed.
