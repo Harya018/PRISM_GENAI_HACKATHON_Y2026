@@ -16,6 +16,7 @@ camera enabled to talk to it.
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -32,9 +33,11 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from google.genai import types as genai_types
-from livekit import agents
+from livekit import agents, rtc
 from livekit.agents import Agent, AgentServer, AgentSession, RoomInputOptions, llm
 from livekit.plugins import google
+
+logger = logging.getLogger("device_agent")
 
 from agent.commit_gate import CommitGate
 from mock_device_apis import DeviceAPIRegistry
@@ -212,13 +215,21 @@ async def entrypoint(ctx: agents.JobContext):
     model_kwargs = dict(
         model="gemini-2.5-flash-native-audio-preview-12-2025",
         voice=os.getenv("GOOGLE_VOICE", "Puck"),
-        # Explicit English, both for the model's own responses (language=) and for input
-        # transcription script (input_audio_transcription=): without this, auto language
-        # detection was picking Hindi for an Indian accent and transcribing English speech in
-        # Devanagari script — found via a live test, not a hypothetical.
-        language=os.getenv("GOOGLE_LANGUAGE", "en-US"),
+        # Explicit English, both for the model's own responses (language=) and for input+output
+        # transcription (*_audio_transcription=): without this, auto language detection was
+        # picking Hindi for an Indian accent and transcribing English speech in Devanagari
+        # script — found via a live test, not a hypothetical.
+        #
+        # google.genai.types has no LanguageCode enum (checked: hasattr is False) -- the
+        # plugin's `language` param is an unvalidated NotGivenOr[str], so "en-IN" acceptance
+        # can only be confirmed by a live session, not static inspection. Default to "en-IN"
+        # (closer to the expected accent); if a live test shows Gemini rejects or mishandles
+        # it, set GOOGLE_LANGUAGE=en-US as an override -- no code change needed either way.
+        language=(_lang := os.getenv("GOOGLE_LANGUAGE", "en-IN")),
         input_audio_transcription=genai_types.AudioTranscriptionConfig(
-            language_codes=[os.getenv("GOOGLE_LANGUAGE", "en-US")]),
+            language_codes=[_lang]),
+        output_audio_transcription=genai_types.AudioTranscriptionConfig(
+            language_codes=[_lang]),
     )
 
     # X1: session longevity. Gemini Live audio+video sessions cap at ~2 minutes without
@@ -253,6 +264,32 @@ async def entrypoint(ctx: agents.JobContext):
 
     turn = TurnTranscript()
     stager = LatencyStager(ctx.room)
+
+    def _publish(topic: str, payload: dict) -> None:
+        data = json.dumps(payload, default=str).encode("utf-8")
+        try:
+            asyncio.ensure_future(
+                ctx.room.local_participant.publish_data(data, reliable=True, topic=topic))
+        except Exception:
+            pass  # telemetry only -- never affect agent behavior
+
+    # --- Part 1 diagnostics: log every step of "does the agent actually hear the user" to the
+    # agent's own log (not just the data-channel captions a frontend may or may not be
+    # listening to), each with a timestamp, so a silent session can be root-caused from the log
+    # alone -- room-side track subscription, then model-side transcripts/errors below.
+    def _on_track_subscribed(track, publication, participant) -> None:
+        logger.info("track_subscribed: participant=%s kind=%s sid=%s t=%s",
+                    participant.identity, track.kind, track.sid, time.time())
+        _publish("status", {"event": "track_subscribed", "kind": str(track.kind),
+                            "participant": participant.identity, "t": time.time()})
+
+    def _on_participant_connected(participant) -> None:
+        logger.info("participant_connected: identity=%s t=%s", participant.identity, time.time())
+        _publish("status", {"event": "participant_connected", "participant": participant.identity,
+                            "t": time.time()})
+
+    ctx.room.on("track_subscribed", _on_track_subscribed)
+    ctx.room.on("participant_connected", _on_participant_connected)
 
     def on_committed(tool_name: str, args: dict) -> None:
         """Fires once a proposed call has survived the commit gate's buffer and is about to
@@ -290,18 +327,11 @@ async def entrypoint(ctx: agents.JobContext):
         # was wrong. Wire it in as a genuine server-side throttle: speak while the user talks
         # gets a normal 1fps, silence drops to 0.2fps. The client-side ~1fps/320x240 capture
         # throttle (extension/dashboard.html) stays regardless, since that one also cuts upload
-        # bandwidth, which this sampler alone doesn't.
+        # bandwidth, which this sampler alone doesn't. Moot since Part 3 made video_enabled=False
+        # the default below -- kept inert for whoever re-enables video_input deliberately.
         from livekit.agents.voice.agent_session import VoiceActivityVideoSampler
         session_kwargs["video_sampler"] = VoiceActivityVideoSampler(speaking_fps=1.0, silent_fps=0.2)
     session = AgentSession(llm=model, tools=tools, **session_kwargs)
-
-    def _publish(topic: str, payload: dict) -> None:
-        data = json.dumps(payload, default=str).encode("utf-8")
-        try:
-            asyncio.ensure_future(
-                ctx.room.local_participant.publish_data(data, reliable=True, topic=topic))
-        except Exception:
-            pass  # telemetry only -- never affect agent behavior
 
     @session.on("user_input_transcribed")
     def on_user_input(msg: agents.voice.UserInputTranscribedEvent):
@@ -313,6 +343,8 @@ async def entrypoint(ctx: agents.JobContext):
         # overlapping partial repeats (a real bug fixed here, not just a caption-UI one).
         if is_final:
             turn.append(text)
+        logger.info("user_input_transcribed: is_final=%s text=%r t=%s",
+                    is_final, text, time.time())
         _publish("captions", {"speaker": "user", "text": text, "is_final": is_final,
                              "t": time.time()})
 
@@ -330,24 +362,71 @@ async def entrypoint(ctx: agents.JobContext):
             else (content or "")
         if not text:
             return
+        logger.info("agent_output_transcribed: text=%r t=%s", text, time.time())
         _publish("captions", {"speaker": "agent", "text": text, "is_final": True,
                              "t": time.time()})
 
     @session.on("agent_state_changed")
     def on_agent_state(ev: agents.voice.AgentStateChangedEvent):
+        logger.info("agent_state_changed: %s -> %s t=%s", ev.old_state, ev.new_state, time.time())
+        _publish("status", {"event": "agent_state", "state": str(ev.new_state), "t": time.time()})
         if ev.new_state == "thinking":
             stager.on_turn_end()
         elif ev.new_state == "speaking":
             stager.on_speaking_start()
             turn.reset()
 
-    # video_enabled=True subscribes to the participant's camera track and forwards frames to
-    # the realtime model alongside audio — this is the one piece of this extension not yet
-    # exercised against a real camera feed end-to-end; wiring is per the current livekit-agents
-    # RoomInputOptions API (confirmed in source, not assumed), degrades to audio-only if no
-    # video track is published.
-    await session.start(room=ctx.room, agent=DeviceAgent(),
-                        room_input_options=RoomInputOptions(video_enabled=True))
+    @session.on("error")
+    def on_session_error(ev) -> None:
+        # Model-side failures (Gemini session never activating, quota, a rejected `language`
+        # value, etc.) surface here rather than as a silent hang -- this is the log signature
+        # Part 1's diagnosis step 5 depends on.
+        logger.error("session_error: source=%r error=%r t=%s", ev.source, ev.error, time.time())
+        _publish("status", {"event": "error", "detail": repr(ev.error), "t": time.time()})
+
+    @session.on("close")
+    def on_session_close(ev) -> None:
+        logger.warning("session_close: reason=%s error=%r t=%s", ev.reason, ev.error, time.time())
+        _publish("status", {"event": "close", "reason": str(ev.reason), "t": time.time()})
+
+    # --- Part 3: voice + single snapshot, not a continuous camera feed. The client sends at
+    # most one still frame per "Send photo" click over a byte stream (topic "snapshot",
+    # extension/dashboard.html); Room.register_byte_stream_handler's own callback contract is
+    # synchronous (confirmed by reading livekit.rtc.room's dispatch source directly: it calls
+    # the handler and does not await it), so the actual async work is handed to a task.
+    device_agent = DeviceAgent()
+
+    async def _handle_snapshot(reader: rtc.ByteStreamReader, participant_identity: str) -> None:
+        try:
+            chunks = [chunk async for chunk in reader]
+            data = b"".join(chunks)
+            mime_type = reader.info.mime_type or "image/jpeg"
+            b64 = base64.b64encode(data).decode("ascii")
+            data_url = f"data:{mime_type};base64,{b64}"
+            # Confirmed via direct source inspection (not guessed): ChatContext.copy() +
+            # .add_message(role=..., content=[...]) build the new context, llm.ImageContent
+            # accepts a data: URL directly, and Agent.update_chat_ctx forwards to the active
+            # realtime session for the Gemini model specifically.
+            new_ctx = device_agent.chat_ctx.copy()
+            new_ctx.add_message(role="user", content=[llm.ImageContent(image=data_url)])
+            await device_agent.update_chat_ctx(new_ctx)
+            logger.info("snapshot_received: participant=%s bytes=%d mime=%s t=%s",
+                        participant_identity, len(data), mime_type, time.time())
+            _publish("status", {"event": "photo_received", "bytes": len(data), "t": time.time()})
+        except Exception as e:
+            logger.error("snapshot_handling_failed: %r t=%s", e, time.time())
+            _publish("status", {"event": "photo_failed", "detail": repr(e), "t": time.time()})
+
+    def _on_snapshot_stream(reader: rtc.ByteStreamReader, participant_identity: str) -> None:
+        asyncio.ensure_future(_handle_snapshot(reader, participant_identity))
+
+    ctx.room.register_byte_stream_handler("snapshot", _on_snapshot_stream)
+
+    # Voice-only by default -- no continuous camera publish/subscribe (Part 3). A photo the user
+    # sends arrives over the "snapshot" byte stream above instead, one frame at a time.
+    await session.start(room=ctx.room, agent=device_agent,
+                        room_input_options=RoomInputOptions(video_enabled=False))
+    _publish("status", {"event": "agent_ready", "t": time.time()})
 
 
 if __name__ == "__main__":

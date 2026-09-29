@@ -68,7 +68,6 @@
   .right-col { width: 25%; min-width: 220px; border-left: 1px solid var(--border); flex-shrink: 0; }
   .center-col { width: 50%; flex: 1; display: flex; flex-direction: column; padding: 14px; min-width: 0; }
 
-  #localVideo { width: 100%; border-radius: 12px; background: #000; display: block; aspect-ratio: 4/3; object-fit: cover; }
   .btn {
     width: 100%; margin-top: 10px; padding: 10px; border-radius: 10px; border: none;
     background: var(--blue-glow); color: #fff; font-weight: 600; cursor: pointer; font-size: 13px;
@@ -210,13 +209,20 @@
 <main>
   <div class="view active" id="view-live">
     <div class="col left-col">
-      <h2>Camera</h2>
-      <video id="localVideo" autoplay muted playsinline></video>
-      <button class="btn" id="joinBtn">Join with mic + camera</button>
+      <h2>Session</h2>
+      <button class="btn" id="joinBtn">Join with mic</button>
+      <button class="btn secondary" id="muteBtn" disabled>🎤 Mute mic</button>
       <select id="replaySelect"><option value="">Replay: none available</option></select>
       <button class="btn secondary" id="replayBtn" disabled>▶ Play replay</button>
       <button class="btn secondary" id="recordBtn" disabled>⏺ Record this session</button>
       <div id="connStatus">Not connected</div>
+      <div id="agentStatus" style="font-size:11px;color:var(--muted);margin-top:4px;">Agent: not joined</div>
+
+      <h2 style="margin-top:16px;">Photo</h2>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
+      <button class="btn secondary" id="sendPhotoBtn" disabled>📷 Send photo</button>
+      <img id="photoThumb" style="display:none; width:100%; border-radius:10px; margin-top:8px;">
+      <div id="photoStatus" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
 
       <h2 style="margin-top:16px;">Conversation</h2>
       <div class="card">
@@ -470,6 +476,7 @@ function handleLatencyEvent(msg) {
 
 const captionsEl = document.getElementById('captions');
 let captionsFirst = true;
+const CAPTION_LABELS = { user: 'You said', agent: 'Agent' };
 // One in-progress DOM row per speaker: interim (is_final=false) events update it in place;
 // is_final=true finalizes its styling and clears the slot so the NEXT event for that speaker
 // starts a fresh row, instead of appending a new line per interim revision.
@@ -481,7 +488,7 @@ function handleCaption(msg) {
   if (!row) {
     row = document.createElement('div');
     row.className = 'row';
-    row.innerHTML = `<span class="who ${who}">${who}</span><span class="text"></span>`;
+    row.innerHTML = `<span class="who ${who}">${CAPTION_LABELS[who]}:</span><span class="text"></span>`;
     captionsEl.appendChild(row);
   }
   row.classList.toggle('interim', !msg.is_final);
@@ -498,6 +505,31 @@ function handleCaption(msg) {
   }
 }
 
+/* ---------- Part 4: granular connection/agent status (device_agent.py's "status" topic) ---------- */
+const agentStatusEl = document.getElementById('agentStatus');
+function handleStatus(msg) {
+  switch (msg.event) {
+    case 'participant_connected': agentStatusEl.textContent = 'Agent: joined the room'; break;
+    case 'track_subscribed':
+      if (msg.kind && msg.kind.toLowerCase().includes('audio')) agentStatusEl.textContent = 'Agent: subscribed to your mic';
+      break;
+    case 'agent_ready': agentStatusEl.textContent = 'Agent: ready — listening'; break;
+    case 'agent_state':
+      if (msg.state === 'listening' || msg.state === 'idle') agentStatusEl.textContent = 'Agent: listening';
+      else if (msg.state === 'thinking') agentStatusEl.textContent = 'Agent: thinking…';
+      else if (msg.state === 'speaking') agentStatusEl.textContent = 'Agent: speaking';
+      break;
+    case 'photo_received':
+      document.getElementById('photoStatus').textContent = `Photo sent (${msg.bytes} bytes) — agent has it now.`;
+      break;
+    case 'photo_failed':
+      document.getElementById('photoStatus').textContent = 'Photo failed to send: ' + msg.detail;
+      break;
+    case 'error': agentStatusEl.textContent = 'Agent: error — ' + msg.detail; break;
+    case 'close': agentStatusEl.textContent = 'Agent: session closed (' + msg.reason + ')'; break;
+  }
+}
+
 const decoder = new TextDecoder();
 let recording = false;
 let recordBuffer = [];
@@ -509,6 +541,7 @@ function onDataReceived(payload, participant, kind, topic) {
     if (topic === 'gate') handleGateEvent(msg);
     else if (topic === 'latency') handleLatencyEvent(msg);
     else if (topic === 'captions') handleCaption(msg);
+    else if (topic === 'status') handleStatus(msg);
   } catch (e) { console.warn('event handling failed (ignored):', topic, e); }
 }
 
@@ -539,31 +572,91 @@ function setConn(state) {
   label.textContent = state;
 }
 
+let currentRoom = null;
+let micEnabled = false;
+
 document.getElementById('joinBtn').onclick = async () => {
-  document.getElementById('joinBtn').disabled = true;
+  const joinBtn = document.getElementById('joinBtn');
+  joinBtn.disabled = true;
   const statusEl = document.getElementById('connStatus');
-  statusEl.textContent = 'Fetching token...';
-  const resp = await fetch('/token');
-  const { token, url } = await resp.json();
+  try {
+    statusEl.textContent = 'Fetching token...';
+    const resp = await fetch('/token');
+    const { token, url } = await resp.json();
 
-  const room = new LivekitClient.Room();
-  room.on(LivekitClient.RoomEvent.DataReceived, onDataReceived);
-  room.on(LivekitClient.RoomEvent.Disconnected, () => { statusEl.textContent = 'Disconnected'; setConn('Idle'); });
+    const room = new LivekitClient.Room();
+    currentRoom = room;
+    room.on(LivekitClient.RoomEvent.DataReceived, onDataReceived);
+    room.on(LivekitClient.RoomEvent.Disconnected, () => {
+      statusEl.textContent = 'Disconnected'; setConn('Idle');
+      document.getElementById('muteBtn').disabled = true;
+      document.getElementById('sendPhotoBtn').disabled = true;
+    });
 
-  statusEl.textContent = 'Connecting...';
-  await room.connect(url, token);
-  statusEl.textContent = 'Connected — enabling mic + camera...';
-  setConn('Live');
+    statusEl.textContent = 'Connecting...';
+    await room.connect(url, token);
+    statusEl.textContent = 'Connected — enabling mic...';
+    setConn('Live');
 
-  await room.localParticipant.setMicrophoneEnabled(true);
-  await room.localParticipant.setCameraEnabled(true, {
-    resolution: { width: 320, height: 240, frameRate: 1 },
-  });
-  const camPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
-  if (camPub && camPub.track) camPub.track.attach(document.getElementById('localVideo'));
+    await room.localParticipant.setMicrophoneEnabled(true);
+    micEnabled = true;
+    // Part 1 diagnosis step 3: if the mic track never actually publishes (permission denied
+    // after all, or no device), this confirms it either way instead of assuming success just
+    // because setMicrophoneEnabled() didn't throw.
+    const micPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+    console.log('Mic track published:', !!(micPub && micPub.track), micPub && micPub.trackSid);
 
-  statusEl.textContent = 'Live — talk to the agent now.';
-  document.getElementById('recordBtn').disabled = false;
+    statusEl.textContent = 'Live — talk to the agent now.';
+    document.getElementById('recordBtn').disabled = false;
+    document.getElementById('muteBtn').disabled = false;
+    document.getElementById('sendPhotoBtn').disabled = false;
+  } catch (err) {
+    console.error('Join failed:', err);
+    statusEl.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+    joinBtn.disabled = false;
+  }
+};
+
+document.getElementById('muteBtn').onclick = async () => {
+  if (!currentRoom) return;
+  micEnabled = !micEnabled;
+  await currentRoom.localParticipant.setMicrophoneEnabled(micEnabled);
+  document.getElementById('muteBtn').textContent = micEnabled ? '🎤 Mute mic' : '🔇 Unmute mic';
+};
+
+/* ---------- Part 3: single-photo snapshot (voice-only session, no continuous camera) ---------- */
+const photoInput = document.getElementById('photoInput');
+document.getElementById('sendPhotoBtn').onclick = () => photoInput.click();
+photoInput.onchange = async () => {
+  const file = photoInput.files[0];
+  photoInput.value = '';
+  if (!file || !currentRoom) return;
+  const photoStatusEl = document.getElementById('photoStatus');
+  try {
+    photoStatusEl.textContent = 'Preparing photo...';
+    const bitmap = await createImageBitmap(file);
+    const longEdge = Math.max(bitmap.width, bitmap.height);
+    const scale = Math.min(1, 768 / longEdge);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+
+    const thumb = document.getElementById('photoThumb');
+    thumb.src = canvas.toDataURL('image/jpeg', 0.85);
+    thumb.style.display = 'block';
+
+    photoStatusEl.textContent = 'Sending photo...';
+    await currentRoom.localParticipant.sendBytes(bytes, {
+      topic: 'snapshot', mimeType: 'image/jpeg', name: 'snapshot.jpg',
+    });
+    photoStatusEl.textContent = 'Photo sent — waiting for the agent to receive it...';
+  } catch (err) {
+    console.error('Send photo failed:', err);
+    photoStatusEl.textContent = 'Error sending photo: ' + (err && err.message ? err.message : String(err));
+  }
 };
 
 /* ---------- Replay mode ---------- */

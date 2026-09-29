@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Minimal local test client for the device-troubleshooting extension — serves a page on
-http://localhost:8450 that joins a LiveKit room with mic + camera and talks to
-extension/device_agent.py. No frontend framework: plain HTML + the LiveKit JS SDK from a CDN.
+http://localhost:8450 that joins a LiveKit room with mic only (voice-first; see dashboard.html
+for the full UI with photo support) and talks to extension/device_agent.py. No frontend
+framework: plain HTML + the LiveKit JS SDK from a CDN.
 
 Requests explicit agent dispatch (RoomAgentDispatch(agent_name="device-support")) when minting
 the join token, so this can never collide with any FDB-v3 benchmark room even if one happens to
@@ -9,7 +10,7 @@ be registered at the same time — but per device_agent.py's own policy comment,
 run this while a benchmark run is active; stop the benchmark agent first.
 
 Usage: python extension/web_client.py
-Then open http://localhost:8450 in a browser, grant mic/camera permission, and talk.
+Then open http://localhost:8450 in a browser, grant mic permission, and talk.
 """
 import http.server
 import json
@@ -60,8 +61,7 @@ PAGE = f"""<!DOCTYPE html>
 </head>
 <body>
   <h2>Samsung Device Support — extension test</h2>
-  <video id="localVideo" autoplay muted playsinline></video>
-  <button id="joinBtn">Join with mic + camera</button>
+  <button id="joinBtn">Join with mic (voice-only)</button>
   <div id="status">Not connected</div>
   <div id="log"></div>
 
@@ -74,43 +74,39 @@ function log(msg) {{
 }}
 
 document.getElementById('joinBtn').onclick = async () => {{
-  document.getElementById('joinBtn').disabled = true;
-  statusEl.textContent = "Fetching token...";
-  const resp = await fetch('/token');
-  const {{ token, url }} = await resp.json();
+  const joinBtn = document.getElementById('joinBtn');
+  joinBtn.disabled = true;
+  try {{
+    statusEl.textContent = "Fetching token...";
+    const resp = await fetch('/token');
+    const {{ token, url }} = await resp.json();
 
-  const room = new LivekitClient.Room();
-  room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {{
-    if (track.kind === 'audio') {{
-      const audioEl = track.attach();
-      document.body.appendChild(audioEl);
-    }}
-    log('Subscribed to ' + track.kind + ' from ' + track.sid);
-  }});
-  room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => log('Agent joined: ' + p.identity));
-  room.on(LivekitClient.RoomEvent.Disconnected, () => statusEl.textContent = "Disconnected");
+    const room = new LivekitClient.Room();
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {{
+      if (track.kind === 'audio') {{
+        const audioEl = track.attach();
+        document.body.appendChild(audioEl);
+      }}
+      log('Subscribed to ' + track.kind + ' from ' + track.sid);
+    }});
+    room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => log('Agent joined: ' + p.identity));
+    room.on(LivekitClient.RoomEvent.Disconnected, () => statusEl.textContent = "Disconnected");
 
-  statusEl.textContent = "Connecting...";
-  await room.connect(url, token);
-  statusEl.textContent = "Connected — enabling mic + camera...";
+    statusEl.textContent = "Connecting...";
+    await room.connect(url, token);
+    statusEl.textContent = "Connected — enabling mic...";
 
-  await room.localParticipant.setMicrophoneEnabled(true);
-  // Reduced resolution + ~1 fps: the current livekit-agents version has no server-side video
-  // sampler, so throttling at capture time (here) is what actually controls what Gemini
-  // receives — a lower publish rate/resolution IS a lower received rate/resolution, not just a
-  // bandwidth saving. frameRate is a hint (browsers vary in how strictly they honor a max), not
-  // a hard guarantee — untested against a live camera as of this writing.
-  await room.localParticipant.setCameraEnabled(true, {{
-    resolution: {{ width: 320, height: 240, frameRate: 1 }},
-  }});
+    await room.localParticipant.setMicrophoneEnabled(true);
+    const micPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+    log('Mic track published: ' + !!(micPub && micPub.track));
 
-  const camPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Camera);
-  if (camPub && camPub.track) {{
-    camPub.track.attach(document.getElementById('localVideo'));
+    statusEl.textContent = "Live — talk to the agent now (voice-only; use the main dashboard for photo support).";
+    log('Joined room as ' + room.localParticipant.identity);
+  }} catch (err) {{
+    console.error('Join failed:', err);
+    statusEl.textContent = "Error: " + (err && err.message ? err.message : String(err));
+    joinBtn.disabled = false;
   }}
-
-  statusEl.textContent = "Live — talk to the agent now.";
-  log('Joined room as ' + room.localParticipant.identity);
 }};
 </script>
 </body>
