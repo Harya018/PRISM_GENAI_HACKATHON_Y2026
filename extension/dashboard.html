@@ -575,6 +575,13 @@ function setConn(state) {
 let currentRoom = null;
 let micEnabled = false;
 
+// Fallback unlock: if the browser still blocked autoplay after the initial startAudio() call
+// (some browsers require a *separate* gesture from the one that started the connection), any
+// click anywhere on the page retries it.
+document.addEventListener('click', () => {
+  if (currentRoom && !currentRoom.canPlaybackAudio) currentRoom.startAudio().catch(() => {});
+});
+
 document.getElementById('joinBtn').onclick = async () => {
   const joinBtn = document.getElementById('joinBtn');
   joinBtn.disabled = true;
@@ -587,6 +594,17 @@ document.getElementById('joinBtn').onclick = async () => {
     const room = new LivekitClient.Room();
     currentRoom = room;
     room.on(LivekitClient.RoomEvent.DataReceived, onDataReceived);
+    // Without this, the agent's spoken replies are subscribed to (device_agent.py logs
+    // track_subscribed on its own side) but never attached to anything playable here -- the
+    // browser receives the audio track and silently does nothing with it. The dashboard had
+    // no audio-track handling at all; web_client.py's /simple fallback page did, this didn't.
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === 'audio') {
+        const audioEl = track.attach();
+        audioEl.autoplay = true;
+        document.body.appendChild(audioEl);
+      }
+    });
     room.on(LivekitClient.RoomEvent.Disconnected, () => {
       statusEl.textContent = 'Disconnected'; setConn('Idle');
       document.getElementById('muteBtn').disabled = true;
@@ -595,6 +613,15 @@ document.getElementById('joinBtn').onclick = async () => {
 
     statusEl.textContent = 'Connecting...';
     await room.connect(url, token);
+    // Browsers block audio autoplay until a user gesture unlocks it; startAudio() (called here,
+    // still inside the click handler's async continuation) is LiveKit's documented way to do
+    // that, so the agent's voice isn't silently muted even though the track did attach.
+    await room.startAudio();
+    room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, () => {
+      if (!room.canPlaybackAudio) {
+        agentStatusEl.textContent = 'Agent: audio blocked by the browser — click anywhere on the page to enable sound.';
+      }
+    });
     statusEl.textContent = 'Connected — enabling mic...';
     setConn('Live');
 
