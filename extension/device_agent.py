@@ -228,6 +228,14 @@ async def entrypoint(ctx: agents.JobContext):
         # models/gemini-2.5-flash-native-audio-preview-12-2025" -- see device_agent_run9.log).
         # Falling back to "en-US" per the task's own fallback rule; GOOGLE_LANGUAGE still
         # overrides if a future model version adds en-IN support.
+        #
+        # Known remaining limitation, also confirmed live (not fixable by more config): the
+        # installed SDK's own field description for AudioTranscriptionConfig.language_codes
+        # says it provides "hints about the languages present in the audio" -- a hint, not an
+        # enforced constraint. A live session with language="en-US" and language_codes=["en-US"]
+        # on both transcription configs still produced Tamil- and Japanese-script transcripts
+        # for accented English speech in one session (device_agent_run10.log). This is inherent
+        # auto-detection behavior in this preview native-audio model, not a bug in this file.
         language=(_lang := os.getenv("GOOGLE_LANGUAGE", "en-US")),
         input_audio_transcription=genai_types.AudioTranscriptionConfig(
             language_codes=[_lang]),

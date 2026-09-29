@@ -116,8 +116,16 @@ document.getElementById('joinBtn').onclick = async () => {{
 
 def mint_token() -> dict:
     identity = f"tester-{secrets.token_hex(4)}"
+    # A fresh room name per join, not the fixed ROOM_NAME constant: explicit agent dispatch
+    # (RoomAgentDispatch below) fires once, at room CREATION -- a participant who joins an
+    # already-existing room (e.g. rejoining seconds after the last one left, before LiveKit's
+    # empty-room grace period expires) gets no new dispatch and no agent ever arrives, even
+    # though the join itself and the mic both work fine. This was found live: `participant_
+    # connected` logged in device_agent.py with no `track_subscribed` ever following, sometimes
+    # for hours, because the same "device-support-test" room kept getting silently reused.
+    room_name = f"{ROOM_NAME}-{secrets.token_hex(4)}"
     grants = api.VideoGrants(
-        room_join=True, room=ROOM_NAME,
+        room_join=True, room=room_name,
         can_publish=True, can_subscribe=True, can_publish_data=True,
     )
     room_config = RoomConfiguration(

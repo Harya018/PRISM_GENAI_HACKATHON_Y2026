@@ -81,5 +81,55 @@ time"` — consistent with the browser tab/connection dropping, not a code defec
 **Not done by AI, left for the user:** the actual live 3-minute test sessions (voice-only with a
 mid-sentence self-correction, then with a photo sent mid-conversation, then confirming the
 `reset_network_settings` gate) — these require a real browser microphone/camera, which this
-environment cannot drive. In particular, whether Gemini accepts `language="en-IN"` at all can
-only be confirmed by that live test; `GOOGLE_LANGUAGE=en-US` is the documented fallback if not.
+environment cannot drive.
+
+## 2026-09-29 (same day, follow-up) — en-IN confirmed rejected live; reverted to en-US
+
+The user's first live test after the change above reproduced exactly the failure this log
+flagged as an open question: joining worked (mic published, agent joined the room, track
+subscribed), but nothing was ever transcribed — the transcript panel stayed empty the whole
+session. The new logging from the commit above made this diagnosable in under a minute:
+`device_agent_run9.log` showed `google.genai.errors.APIError: 1007 None. Unsupported language
+code 'en-IN' for model models/gemini-2.5-flash-native-audio-preview-12-2025`, immediately
+followed by `AgentSession is closing due to unrecoverable error` — the whole Gemini session was
+torn down before the entrypoint even finished starting, so the user was talking to a dead
+session the entire time.
+
+Fix: reverted the default `language` back to `"en-US"` (the value already confirmed working
+before this task started); `GOOGLE_LANGUAGE` still overrides. Restarted the worker and confirmed
+`agent_state_changed: initializing -> listening` with no error in `device_agent_run10.log` —
+the session now actually connects.
+
+## 2026-09-29 (second follow-up) — "sometimes listening, sometimes not"
+
+The user reported the agent was inconsistent: sometimes it heard and transcribed, sometimes
+nothing happened at all when they spoke. `device_agent_run10.log` showed the pattern precisely:
+one join (06:13) worked; two rejoins two minutes apart (06:21, 06:22) each logged
+`participant_connected` but **no `track_subscribed` ever followed, and no new `"registered
+worker"`/session startup either** — then a 2.5-hour gap before the next working session at
+08:53.
+
+Root cause: `web_client.py`'s `mint_token()` used a fixed module-level `ROOM_NAME =
+"device-support-test"` for every single join. LiveKit's explicit agent dispatch
+(`RoomAgentDispatch`) fires once, at room *creation* — a participant who joins an
+*already-existing* room (e.g. rejoining seconds after the previous one disconnected, before
+LiveKit's empty-room grace period expires and tears the room down) gets no new dispatch, so no
+agent job ever spins up for that join, even though the browser's mic and room connection both
+work perfectly fine. This is exactly what the log showed: a live `Room` object receiving
+`participant_connected` (proving the room still existed) with nothing downstream of it (proving
+no job/AgentSession was attached to hear it).
+
+Fix: `mint_token()` now generates a fresh room name per call
+(`f"{ROOM_NAME}-{secrets.token_hex(4)}"`), so every "Join with mic" click creates a brand-new
+room and is guaranteed a fresh explicit-dispatch job — this was not something that could be
+partially mitigated; it needed a genuinely unique room per session. Restarted both
+`device_agent.py` and `web_client.py` on the fix.
+
+Also documented (not fixed — not fixable by more config, confirmed live): even with
+`language="en-US"` and `language_codes=["en-US"]` set on both transcription configs, one working
+session still transcribed accented English speech into Tamil and Japanese script. The installed
+SDK's own field description for `AudioTranscriptionConfig.language_codes` calls it a "hint,"
+not an enforced constraint — this is inherent auto-detection behavior in this preview
+native-audio model (`gemini-2.5-flash-native-audio-preview-12-2025`), not a bug in this repo's
+code. Left as a known limitation in `device_agent.py`'s own comment rather than guessed at
+further.
