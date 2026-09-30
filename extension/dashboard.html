@@ -324,10 +324,10 @@
       <h3>My device</h3>
       <div class="device-card">
         <div class="device-head">
-          <div class="device-glyph">📱</div>
+          <div class="device-glyph" id="devGlyph">📱</div>
           <div>
-            <div class="device-name">Galaxy S24</div>
-            <div class="device-sub" id="devSoftware">Software — not checked yet</div>
+            <div class="device-name" id="devName">Phone or PC</div>
+            <div class="device-sub" id="devSoftware">Not checked yet</div>
           </div>
         </div>
         <div class="dev-row"><span class="k">Battery</span><span class="v stale" id="devBattery">—</span></div>
@@ -335,18 +335,27 @@
         <div class="dev-row"><span class="k">Wi-Fi</span><span class="v stale" id="devWifi">—</span></div>
         <div class="dev-row"><span class="k">Bluetooth</span><span class="v stale" id="devBt">—</span></div>
         <div class="dev-row"><span class="k">Free storage</span><span class="v stale" id="devStorage">—</span></div>
-        <div class="dev-hint" id="devHint">Ask the assistant to check your device and these will fill in.</div>
+        <div class="dev-row" id="devExtraRow" style="display:none;"><span class="k">Driver updates</span><span class="v" id="devExtra">—</span></div>
+        <div class="dev-hint" id="devHint">Say which device you're on — phone or laptop — and ask the
+          assistant to check it. These fill in from the real tool result.</div>
       </div>
 
-      <h3 style="margin-top:20px;">Common issues</h3>
-      <div class="chip-row" id="topicChips">
-        <button class="chip-topic" data-say="My Wi-Fi keeps disconnecting">Wi-Fi</button>
-        <button class="chip-topic" data-say="My Bluetooth won't pair">Bluetooth</button>
-        <button class="chip-topic" data-say="My battery is draining fast">Battery</button>
-        <button class="chip-topic" data-say="My screen is flickering">Screen</button>
-        <button class="chip-topic" data-say="I'm running out of storage">Storage</button>
-        <button class="chip-topic" data-say="My camera won't focus">Camera</button>
-        <button class="chip-topic" data-say="How do I update my software?">Update</button>
+      <h3 style="margin-top:20px;">Common issues — phone</h3>
+      <div class="chip-row">
+        <button class="chip-topic" data-say="My phone's Wi-Fi keeps disconnecting">Wi-Fi</button>
+        <button class="chip-topic" data-say="My phone won't pair with Bluetooth">Bluetooth</button>
+        <button class="chip-topic" data-say="My phone battery is draining fast">Battery</button>
+        <button class="chip-topic" data-say="My phone's fingerprint scanner isn't working">Fingerprint</button>
+        <button class="chip-topic" data-say="My phone camera won't focus">Camera</button>
+      </div>
+
+      <h3 style="margin-top:16px;">Common issues — PC</h3>
+      <div class="chip-row">
+        <button class="chip-topic" data-say="My laptop's screen is flickering">Screen flicker</button>
+        <button class="chip-topic" data-say="The fingerprint reader on my laptop stopped working">Fingerprint</button>
+        <button class="chip-topic" data-say="My laptop's touchpad isn't responding">Touchpad</button>
+        <button class="chip-topic" data-say="My laptop keeps dropping Wi-Fi">Wi-Fi</button>
+        <button class="chip-topic" data-say="My laptop is overheating">Overheating</button>
       </div>
       <div class="dev-hint" id="chipHint">Tap one to see how to phrase it, then say it out loud.</div>
     </div>
@@ -658,6 +667,11 @@ function updateDeviceCard(r) {
     const el = document.getElementById(id);
     if (el && val !== undefined && val !== null) { el.textContent = val; el.classList.remove('stale'); }
   };
+  // The card follows whichever device the assistant actually queried -- it is never a UI
+  // setting, so it can't claim a device the tools were never asked about.
+  const isPc = r.device_type === 'pc';
+  document.getElementById('devGlyph').textContent = isPc ? '💻' : '📱';
+  if (r.model) document.getElementById('devName').textContent = r.model;
   if (r.battery_percent !== undefined) {
     set('devBattery', r.battery_percent + '%');
     document.getElementById('devBattBar').style.width = r.battery_percent + '%';
@@ -665,10 +679,19 @@ function updateDeviceCard(r) {
   if (r.wifi_connected !== undefined) set('devWifi', r.wifi_connected ? 'Connected' : 'Not connected');
   if (r.bluetooth_connected !== undefined) set('devBt', r.bluetooth_connected ? 'Connected' : 'Not connected');
   if (r.storage_free_gb !== undefined) set('devStorage', r.storage_free_gb + ' GB free');
-  if (r.software_version) document.getElementById('devSoftware').textContent = 'Software ' + r.software_version;
+  if (r.software_version) document.getElementById('devSoftware').textContent = r.software_version;
+  const extraRow = document.getElementById('devExtraRow');
+  if (r.pending_driver_updates !== undefined) {
+    extraRow.style.display = '';
+    set('devExtra', r.pending_driver_updates + ' pending');
+  } else { extraRow.style.display = 'none'; }
   const hint = document.getElementById('devHint');
   if (hint) hint.textContent = r.last_reboot_hours_ago !== undefined
     ? `Last restarted about ${r.last_reboot_hours_ago} hours ago.` : 'Device details are up to date.';
+}
+
+function deviceLabel(r) {
+  return r && r.device_type === 'pc' ? 'PC' : 'phone';
 }
 
 function handleUserFacingGate(msg) {
@@ -676,12 +699,13 @@ function handleUserFacingGate(msg) {
   switch (msg.event) {
     case 'executed': {
       const r = msg.result || {};
-      if (msg.tool === 'get_device_status') { updateDeviceCard(r); addAction('', f.ico, f.title, 'Battery, storage, Wi-Fi and software version refreshed.'); }
+      const dev = deviceLabel(r);
+      if (msg.tool === 'get_device_status') { updateDeviceCard(r); addAction('', f.ico, f.title, `Read your ${dev}'s battery, storage, Wi-Fi and software version.`); }
       else if (msg.tool === 'lookup_manual') {
-        if (r.snippet) { addGuide(r.topic, r.snippet); addAction('', f.ico, f.title, 'Steps for "' + (r.topic || '') + '" are shown above.'); }
+        if (r.snippet) { addGuide(`${r.topic} on your ${dev}`, r.snippet); addAction('', f.ico, f.title, `Official ${dev} steps for "${r.topic || ''}" are shown above.`); }
         else addAction('skip', f.ico, f.title, r.message || 'No matching guide found.');
       }
-      else if (msg.tool === 'open_settings') addAction('', f.ico, f.title, 'Opened ' + (r.opened_panel || 'settings') + '.');
+      else if (msg.tool === 'open_settings') addAction('', f.ico, f.title, r.path ? `${r.path} (${dev})` : `Opened ${r.opened_panel || 'settings'}.`);
       else if (msg.tool === 'reset_network_settings') addAction('risk', f.ico, f.title, r.message || 'Wi-Fi and Bluetooth will need reconnecting.');
       else addAction('', f.ico, f.title, '');
       break;

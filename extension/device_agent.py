@@ -73,10 +73,16 @@ TOOL_KINDS = {
     "reset_network_settings": "state_modifying",
 }
 TOOL_SCHEMAS = {
-    "lookup_manual": {"args": {"topic": {"type": "string"}}},
-    "get_device_status": {"args": {}},
-    "open_settings": {"args": {"panel": {"type": "string"}}},
-    "reset_network_settings": {"args": {}},
+    # device_type is a first-class argument on every tool, not a session setting: the assistant
+    # covers both Galaxy phones and Galaxy Book PCs, the correct steps genuinely differ, and
+    # putting it in the schema means the resolver can catch a mid-sentence correction of it
+    # ("my phone -- no wait, my laptop") exactly like any other argument.
+    "lookup_manual": {"args": {"topic": {"type": "string"},
+                               "device_type": {"type": "string"}}},
+    "get_device_status": {"args": {"device_type": {"type": "string"}}},
+    "open_settings": {"args": {"panel": {"type": "string"},
+                               "device_type": {"type": "string"}}},
+    "reset_network_settings": {"args": {"device_type": {"type": "string"}}},
 }
 CONFIRM_REQUIRED = frozenset({"reset_network_settings"})
 
@@ -169,34 +175,48 @@ class DeviceAssistantFnc:
         self._log_tool_call(name, args, t_start, t_end)
         return json.dumps(result)
 
-    @ai_callable_decorator(description="Look up a troubleshooting instruction by topic (e.g. "
-                                       "wifi, bluetooth, battery, screen, update, storage, "
-                                       "camera, network). Always call this rather than "
-                                       "answering from memory.")
-    async def lookup_manual(self, topic: str):
-        """Args: topic: a short keyword for what the user is having trouble with."""
-        return await self._call("lookup_manual", topic=topic)
+    @ai_callable_decorator(description="Look up the official troubleshooting steps for a topic "
+                                       "(wifi, bluetooth, battery, screen, fingerprint, camera, "
+                                       "storage, update, overheating, network; PCs also have "
+                                       "touchpad and keyboard). Always call this rather than "
+                                       "answering from memory — the steps differ between a "
+                                       "Galaxy phone and a Galaxy Book PC.")
+    async def lookup_manual(self, topic: str, device_type: str = "phone"):
+        """Args:
+        topic: a short keyword for what the user is having trouble with.
+        device_type: 'phone' or 'pc' — which device the user is talking about. Infer it from
+            their own words ('laptop', 'my Book', 'Windows' -> pc; 'phone', 'Galaxy S' -> phone).
+        """
+        return await self._call("lookup_manual", topic=topic, device_type=device_type)
 
     @ai_callable_decorator(description="Get the device's current diagnostic status (battery, "
-                                       "Wi-Fi/Bluetooth connection, storage, software version). "
-                                       "Always call this rather than guessing the device's state.")
-    async def get_device_status(self):
-        return await self._call("get_device_status")
+                                       "Wi-Fi/Bluetooth connection, free storage, software "
+                                       "version). Always call this rather than guessing the "
+                                       "device's state.")
+    async def get_device_status(self, device_type: str = "phone"):
+        """Args: device_type: 'phone' or 'pc' — which device to report on."""
+        return await self._call("get_device_status", device_type=device_type)
 
     @ai_callable_decorator(description="Open a settings panel on the device (low-risk, "
                                        "navigational — safe to call directly once the panel "
-                                       "name is settled).")
-    async def open_settings(self, panel: str):
-        """Args: panel: the settings panel to open, e.g. 'Wi-Fi' or 'Battery'."""
-        return await self._call("open_settings", panel=panel)
+                                       "name is settled). The path differs between One UI and "
+                                       "Windows, so pass the right device_type.")
+    async def open_settings(self, panel: str, device_type: str = "phone"):
+        """Args:
+        panel: the settings panel to open, e.g. 'Wi-Fi' or 'Battery'.
+        device_type: 'phone' or 'pc'.
+        """
+        return await self._call("open_settings", panel=panel, device_type=device_type)
 
     @ai_callable_decorator(description="Reset the device's network settings (Wi-Fi, Bluetooth, "
-                                       "mobile data) to factory defaults. DESTRUCTIVE — only "
-                                       "call this after the user has explicitly confirmed they "
-                                       "want to proceed, per your instructions. Calling it "
-                                       "without confirmation on record will be refused.")
-    async def reset_network_settings(self):
-        return await self._call("reset_network_settings")
+                                       "and on a phone mobile data) to factory defaults. "
+                                       "DESTRUCTIVE — only call this after the user has "
+                                       "explicitly confirmed they want to proceed, per your "
+                                       "instructions. Calling it without confirmation on record "
+                                       "will be refused.")
+    async def reset_network_settings(self, device_type: str = "phone"):
+        """Args: device_type: 'phone' or 'pc'."""
+        return await self._call("reset_network_settings", device_type=device_type)
 
 
 class DeviceAgent(Agent):
