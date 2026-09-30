@@ -343,6 +343,13 @@ async def entrypoint(ctx: agents.JobContext):
 
     fnc_ctx = DeviceAssistantFnc(turn, gate, ctx.room.name)
     tools = llm.find_function_tools(fnc_ctx)
+    # Diagnostic: found a live session where the agent hallucinated "I'm having difficulty
+    # accessing X" instead of ever actually calling a tool -- zero buffered/executed events in
+    # the whole conversation, confirmed from the log. Tool registration itself tested fine in
+    # isolation, so this one line rules that specific cause in/out instantly from the log alone
+    # next time, instead of needing an isolated repro script to check it after the fact.
+    logger.info("tools_registered: count=%d names=%s", len(tools),
+               [getattr(t.info, "name", "?") for t in tools])
     session_kwargs = {}
     if EXT_MEDIA_RESOLUTION:
         # X2, corrected finding: a real server-side video sampler DOES exist in the installed
