@@ -5,6 +5,20 @@ full-duplex, interruptible tool use — the kind of agent that has to keep liste
 talks and acts, so it can hear "actually, no — make that Berlin" and never have already called
 the tool for Paris.
 
+## Submission
+
+| | |
+|---|---|
+| **Theme** | Theme 05 — Interruptible Real-Time Agents |
+| **Team** | CodeStorm |
+| **College** | SRM Institute of Science and Technology, Kattankulathur |
+| **Repository** | https://github.com/Harya018/samsung-prism-Hackathon |
+| **Demo video** | [`docs/demo/demo_video.mp4`](docs/demo/demo_video.mp4) |
+| **Slide deck** | [`docs/CodeStorm_SRM_Theme05_Submission.pptx`](docs/CodeStorm_SRM_Theme05_Submission.pptx) |
+| **Reproduction** | [`scripts/run_fdb_v3.sh`](scripts/run_fdb_v3.sh) — one command, install through evaluate |
+| **Declared provider** | Gemini Live (`LK_PROVIDER=gemini2_5`) — see [Declared provider](#declared-provider) |
+| **Our best run** | [`results/`](results/) — raw evaluator reports, run config, and an honest note on what they do and don't mean |
+
 **The problem:** a realtime voice model can call a tool the instant it recognizes intent, before
 the user finishes a self-correction, a filler-filled pause, or a change of mind. Full-Duplex-Bench
 v3 (FDB-v3) scores exactly this — an "extra" call, even a read-only one that got corrected a
