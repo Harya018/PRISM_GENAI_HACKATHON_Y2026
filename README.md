@@ -18,6 +18,7 @@ the tool for Paris.
 | **Reproduction** | [`scripts/run_fdb_v3.sh`](scripts/run_fdb_v3.sh) — one command, install through evaluate |
 | **Declared provider** | Gemini Live (`LK_PROVIDER=gemini2_5`) — see [Declared provider](#declared-provider) |
 | **Our best run** | [`results/`](results/) — raw evaluator reports, run config, and an honest note on what they do and don't mean |
+| **AI Disclosure** | [`AI_USAGE_LOG.md`](AI_USAGE_LOG.md) · [Signed PDF Form](docs/AI_Usage_Disclosure_Form.pdf) · [Disclosure Summary](#ai-usage-disclosure) |
 
 **The problem:** a realtime voice model can call a tool the instant it recognizes intent, before
 the user finishes a self-correction, a filler-filled pause, or a change of mind. Full-Duplex-Bench
@@ -265,3 +266,75 @@ short:
   itself (currently extension-only, gated off the scored agent by design) once there's a UI to
   consume it, to make future cross-turn-correction failures diagnosable from timing data instead
   of manual transcript reading.
+
+## AI Usage Disclosure
+
+Official submission document: 📄 **[`docs/AI_Usage_Disclosure_Form.pdf`](docs/AI_Usage_Disclosure_Form.pdf)** (signed copy).
+
+Real timestamped developer logs of all AI interactions are also preserved in [`AI_USAGE_LOG.md`](AI_USAGE_LOG.md). Below is the full text of the disclosure form:
+
+### 1. Team Details
+- **Team Name:** CodeStorm
+- **Project Name:** Interruptible Real-Time Agents
+- **Institution:** SRM Institute of Science and Technology, Kattankulathur
+- **Submission Date:** September 30, 2026
+
+### 2. AI Usage Declaration
+- **Did your team use any Artificial Intelligence (AI) in developing this project?** **✓ Yes** / No
+- **Details:** Claude Code (Anthropic) was utilized as an interactive AI coding assistant for architecture evaluation, implementation assistance, UI restyling, benchmark telemetry diagnostics, and test suite generation.
+
+### 3. Purpose of AI Usage (Brief Details)
+- **Idea generation / brainstorming:** Evaluated architectural patterns for interruptible voice agents; evaluated speculative retrieval vs commit gate and determined speculative execution was unsafe for the scoring harness.
+- **Code generation or assistance:** Assisted in authoring and refining commit gate logic, debouncing buffer, idempotency checks, room token generation, and LiveKit event bindings.
+- **UI / UX design:** Redesigned the extension dashboard UI into a modern, card-based light theme with responsive pipeline cards based on reference design specifications.
+- **Content creation:** Generated and structured technical documentation, benchmark logs summary, and run configuration metadata.
+- **Data analysis:** Analyzed agent execution logs and benchmark outputs to isolate race conditions, unhandled exceptions, and speech recognition behavior.
+- **Testing / debugging:** Diagnosed asynchronous future hangs, connection lifecycle bugs, and unhandled mic permissions; generated comprehensive unit tests for commit gate policies.
+- **Other:** Submission checklist and compliance audit against Theme 5 participant guidelines.
+
+### 4. Feature Origin Classification
+
+#### 1. Commit Gate & Debounce Interception Buffer (`agent/commit_gate.py`)
+- **Origin:** BOTH (SELF & AI)
+- **AI Tools / Platform Used:** Claude Code (Anthropic)
+- **Prompt Used:** *"Implement an asynchronous commit gate for LiveKit tool calls that holds proposed calls in a debounce buffer window to absorb mid-utterance user self-corrections, deduplicating identical calls and supporting explicit confirmation gates."*
+- **Output Summary:** Python implementation of CommitGate managing buffered calls, cancellation of superseded calls, event telemetry, idempotency guards, and execution dispatch.
+- **Modification:** Identified and fixed an unhandled future exception leak where a failed tool execution left superseded waiters permanently hanging; integrated opt-in call timeouts and max call ceilings.
+
+#### 2. Block-Only Transcript Argument Resolver (`agent/resolver.py`)
+- **Origin:** BOTH (SELF & AI)
+- **AI Tools / Platform Used:** Claude Code (Anthropic)
+- **Prompt Used:** *"Create a conservative resolver that analyzes turn transcripts for speech disfluency corrections and only updates tool arguments when the user explicitly corrects a value, preventing hallucinated argument substitutions."*
+- **Output Summary:** A targeted parser extracting explicit corrections (e.g., 'no, make that X') to override pre-emptive tool call arguments without modifying unmentioned fields.
+- **Modification:** Scoped strictly to single-utterance self-corrections to protect benchmark stability and prevent unintended state drift across turns.
+
+#### 3. Real-Time Audio / Video Snapshot Extension Pipeline (`extension/device_agent.py`, `extension/web_client.py`)
+- **Origin:** BOTH (SELF & AI)
+- **AI Tools / Platform Used:** Claude Code (Anthropic)
+- **Prompt Used:** *"Implement single-snapshot camera transmission over LiveKit byte streams alongside native voice streaming, adding robust mic permission error handling and per-session dynamic room naming."*
+- **Output Summary:** Client-side image capture downscaled to 768px sent via 'snapshot' byte stream into the chat context as ImageContent; unique room name generation per join to ensure clean worker dispatch.
+- **Modification:** Reverted unsupported 'en-IN' language code back to 'en-US' following live API validation failure; converted synchronous byte stream handlers to asynchronous tasks.
+
+#### 4. Interactive Live Dashboard & Benchmark Explorer (`extension/dashboard.html`, `scripts/build_dashboard_data.py`)
+- **Origin:** BOTH (SELF & AI)
+- **AI Tools / Platform Used:** Claude Code (Anthropic)
+- **Prompt Used:** *"Build an evaluation dashboard and scenario explorer reading live data from benchmark evaluation JSON files, and style dashboard.html with a clean, light, card-based interface."*
+- **Output Summary:** HTML/CSS/JS dashboard rendering live agent pipeline stages, commit gate decision feeds, benchmark comparisons (Ours vs Baseline across 100 recordings), and a data aggregator script.
+- **Modification:** Corrected path resolution in build_dashboard_data.py for portable repository cloning, and preserved all underlying JS event listeners during CSS overhaul.
+
+#### 5. Harness Hardening & Sensitive Argument Redaction (`agent/commit_gate.py`)
+- **Origin:** BOTH (SELF & AI)
+- **AI Tools / Platform Used:** Claude Code (Anthropic)
+- **Prompt Used:** *"Add argument redaction for sensitive fields in telemetry events, optional tool execution timeouts, and execution budget limits to prevent runaway loops."*
+- **Output Summary:** Pattern-matching redaction masking sensitive fields (passwords, tokens, pins, card numbers) from event logs, async timeout wrapper, and 7 unit tests.
+- **Modification:** Strictly kept redaction within logging and telemetry layers so actual tool execution receives unmodified arguments; rejected speculative tool execution to avoid scoring penalties.
+
+### 5. Ethical & Compliance Confirmation
+- AI usage complies with guidelines and policies: **Yes**
+- No proprietary or copyrighted data misused: **I Agree**
+
+### 6. Declaration & Sign-Off
+- **Name of Team Representative:** Guna k
+- **Role:** Team Lead
+- **Signature:** Guna k
+- **Date:** September 30, 2026
