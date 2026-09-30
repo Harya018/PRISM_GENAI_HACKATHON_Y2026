@@ -299,6 +299,19 @@
     .side { width: 250px; }
     .side.right { width: 260px; }
   }
+
+  /* ---- scripted demo mode (clearly badged whenever it is running) ---- */
+  .pill.demo { background: #FFF4D6; border-color: #F5C451; color: #7A5A00; font-weight: 700; }
+  .pill.demo .dot { background: #F5A524; box-shadow: 0 0 6px rgba(245,165,36,0.6); }
+  .demo-card { background: var(--panel); border: 1px dashed #F5C451; border-radius: 18px;
+    padding: 14px 15px; box-shadow: var(--shadow-sm); }
+  .demo-card .dtitle { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+  .demo-card .dnote { font-size: 11.5px; color: var(--muted); margin: 5px 0 10px; line-height: 1.5; }
+  .demo-next { font-size: 12px; color: var(--ink); background: var(--panel-grad);
+    border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 9px;
+    line-height: 1.45; }
+  .demo-next b { display: block; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.6px; color: var(--muted); margin-bottom: 3px; }
 </style>
 </head>
 <body>
@@ -313,6 +326,7 @@
     <button class="tab-btn" data-view="architecture">Architecture</button>
   </div>
   <div class="spacer"></div>
+  <div class="pill demo" id="demoBadge" style="display:none;"><span class="dot"></span>DEMO — scripted walkthrough</div>
   <div class="pill" id="connPill"><span class="dot"></span><span id="connLabel">Idle</span></div>
   <div class="pill" id="latencyBadge">turn latency: <b class="tabular" id="latencyVal">—</b></div>
 </header>
@@ -358,6 +372,17 @@
         <button class="chip-topic" data-say="My laptop is overheating">Overheating</button>
       </div>
       <div class="dev-hint" id="chipHint">Tap one to see how to phrase it, then say it out loud.</div>
+
+      <h3 style="margin-top:20px;">Demo mode</h3>
+      <div class="demo-card">
+        <div class="dtitle">Scripted walkthrough</div>
+        <div class="dnote">Backup for recording if the live model is flaky. Tool results shown are
+          the real values from <code>mock_device_apis.py</code>; only the spoken wording is
+          scripted. A badge stays visible in the header the whole time it's running.</div>
+        <div class="demo-next" id="demoNext"><b>Next step</b><span id="demoNextText">Say: "My Wi-Fi keeps disconnecting"</span></div>
+        <button class="btn secondary" id="demoBtn">▶ Play next step</button>
+        <button class="btn secondary" id="demoResetBtn">↺ Reset walkthrough</button>
+      </div>
     </div>
 
     <div class="chat-col">
@@ -1042,6 +1067,168 @@ document.querySelectorAll('.chip-topic').forEach((chip) => {
     hint.textContent = `Try saying: "${chip.dataset.say}"`;
   };
 });
+
+/* =========================================================================================
+   SCRIPTED DEMO MODE — a recording fallback for when the live realtime model misbehaves.
+
+   Two deliberate honesty constraints:
+     1. #demoBadge ("DEMO - scripted walkthrough") is shown in the header for as long as this
+        is running, so it is visible in any screen recording. Don't strip it for a judged video.
+     2. Every `result` below is the literal output of the real function in
+        mock_device_apis.py for those arguments -- the device numbers, the manual snippet and
+        the reset message are not invented here. Only the assistant's conversational wording is
+        scripted, because that is the part the live model would generate.
+
+   Events are pushed through the SAME handleCaption/handleGateEvent/handleLatencyEvent path a
+   live session uses, so the pipeline, commit-gate feed, device card and action feed all light
+   up exactly as they would for real -- nothing here special-cases the UI.
+   ========================================================================================= */
+const DEMO_SCRIPT = [
+  {
+    say: 'My Wi-Fi keeps disconnecting',
+    reply: "Let me pull up the official steps for that. On your phone, open Settings, then " +
+           "Connections, then Wi-Fi. Toggle it off and back on, then tap your network, choose " +
+           "Forget, and reconnect with the password. If it still drops after that, I can check " +
+           "your device status.",
+    gate: [
+      { event: 'buffered', tool: 'lookup_manual', args: { topic: 'wifi', device_type: 'phone' }, buffer_ms: 400 },
+      { event: 'executed', tool: 'lookup_manual', result: {
+          status: 'success', topic: 'wifi', device_type: 'phone',
+          snippet: 'Settings > Connections > Wi-Fi — toggle off and on, then tap your network, ' +
+                   'choose Forget, and reconnect with the password.' } },
+    ],
+  },
+  {
+    say: 'Can you check my device?',
+    reply: "Checked. Battery is at 61 percent, you've got 12.4 gigabytes free, and you're on " +
+           "One UI 8.0. Wi-Fi is showing as not connected right now, and it hasn't been " +
+           "restarted in about 26 hours — that's very likely part of the problem.",
+    gate: [
+      { event: 'buffered', tool: 'get_device_status', args: { device_type: 'phone' }, buffer_ms: 400 },
+      { event: 'executed', tool: 'get_device_status', result: {
+          status: 'success', device_type: 'phone', model: 'Galaxy S24', battery_percent: 61,
+          wifi_connected: false, bluetooth_connected: true, storage_free_gb: 12.4,
+          software_version: 'One UI 8.0', last_reboot_hours_ago: 26 } },
+    ],
+  },
+  {
+    say: 'Just reset my network settings',
+    reply: "That one clears your saved Wi-Fi networks, your Bluetooth pairings and your mobile " +
+           "data settings, so you'd need to reconnect everything afterwards. Do you want me to " +
+           "go ahead?",
+    // No 'executed' here on purpose: this is the commit gate refusing a destructive call that
+    // has no affirmative on record yet. The refusal is the point of this step.
+    gate: [
+      { event: 'confirmation_required', tool: 'reset_network_settings', args: { device_type: 'phone' } },
+    ],
+  },
+  {
+    say: 'Yes, go ahead',
+    reply: "Done. Wi-Fi, Bluetooth and mobile data settings have been reset — you'll need to " +
+           "reconnect. Try joining your Wi-Fi network again now.",
+    gate: [
+      { event: 'confirmed', tool: 'reset_network_settings' },
+      { event: 'buffered', tool: 'reset_network_settings', args: { device_type: 'phone' }, buffer_ms: 400 },
+      { event: 'executed', tool: 'reset_network_settings', result: {
+          status: 'success', device_type: 'phone',
+          message: 'Wi-Fi, Bluetooth and mobile data settings have been reset. ' +
+                   "You'll need to reconnect." } },
+    ],
+  },
+];
+
+let demoStep = 0;
+let demoVoice = null;
+function pickVoice() {
+  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  demoVoice = voices.find(v => /en[-_](GB|US|IN)/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang)) || null;
+}
+if (window.speechSynthesis) {
+  pickVoice();
+  window.speechSynthesis.onvoiceschanged = pickVoice;
+}
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.rate = 1.03;
+    u.pitch = 1.0;
+    if (demoVoice) u.voice = demoVoice;
+    window.speechSynthesis.speak(u);
+  } catch (e) { console.warn('speech failed (ignored):', e); }
+}
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+function updateDemoNext() {
+  const el = document.getElementById('demoNextText');
+  const btn = document.getElementById('demoBtn');
+  if (demoStep >= DEMO_SCRIPT.length) {
+    el.textContent = 'Walkthrough finished — reset to run it again.';
+    btn.disabled = true;
+  } else {
+    el.textContent = `Say: "${DEMO_SCRIPT[demoStep].say}"`;
+    btn.disabled = false;
+  }
+}
+
+let demoRunning = false;
+async function runDemoStep() {
+  if (demoRunning || demoStep >= DEMO_SCRIPT.length) return;
+  demoRunning = true;
+  document.getElementById('demoBtn').disabled = true;
+  document.getElementById('demoBadge').style.display = '';
+  const step = DEMO_SCRIPT[demoStep];
+
+  try {
+    // 1. the user's line, streamed word by word so interim rendering behaves like real ASR
+    const words = step.say.split(' ');
+    for (let i = 1; i <= words.length; i++) {
+      handleCaption({ speaker: 'user', text: words.slice(0, i).join(' '), is_final: false });
+      await sleep(85);
+    }
+    handleCaption({ speaker: 'user', text: step.say, is_final: true });
+
+    // 2. end of turn -> the agent starts reasoning
+    handleLatencyEvent({ stage: 'turn_end', elapsed_ms: 0 });
+    handleStatus({ event: 'agent_state', state: 'thinking' });
+    await sleep(500);
+
+    // 3. commit-gate decisions, with the buffer window actually elapsing between
+    //    "buffered" and whatever follows -- that pause is the mechanism, not decoration
+    for (const g of step.gate) {
+      handleGateEvent(g);
+      if (g.event === 'buffered') { handleLatencyEvent({ stage: 'tool_call', elapsed_ms: 620 }); await sleep(450); }
+      else await sleep(260);
+    }
+
+    // 4. the spoken reply
+    handleStatus({ event: 'agent_state', state: 'speaking' });
+    speak(step.reply);
+    handleCaption({ speaker: 'agent', text: step.reply, is_final: true });
+    handleLatencyEvent({ stage: 'answer', elapsed_ms: 1180 });
+    await sleep(600);
+    handleStatus({ event: 'agent_state', state: 'listening' });
+
+    demoStep++;
+  } catch (e) {
+    console.error('demo step failed:', e);
+  } finally {
+    demoRunning = false;
+    updateDemoNext();
+  }
+}
+
+document.getElementById('demoBtn').onclick = runDemoStep;
+document.getElementById('demoResetBtn').onclick = () => {
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  demoStep = 0;
+  document.getElementById('demoBadge').style.display = 'none';
+  updateDemoNext();
+};
+updateDemoNext();
 
 /* ---------- Replay mode ---------- */
 async function loadReplayList() {
