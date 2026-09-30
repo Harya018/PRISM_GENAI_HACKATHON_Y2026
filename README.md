@@ -12,7 +12,7 @@ the tool for Paris.
 | **Theme** | Theme 05 — Interruptible Real-Time Agents |
 | **Team** | CodeStorm |
 | **College** | SRM Institute of Science and Technology, Kattankulathur |
-| **Repository** | https://github.com/Harya018/samsung-prism-Hackathon |
+| **Repository** | https://github.com/Harya018/PRISM_GENAI_HACKATHON_Y2026 |
 | **Demo video** | [`docs/demo/demo_video.mp4`](docs/demo/demo_video.mp4) |
 | **Slide deck** | [`docs/CodeStorm_SRM_Theme05_Submission.pptx`](docs/CodeStorm_SRM_Theme05_Submission.pptx) |
 | **Reproduction** | [`scripts/run_fdb_v3.sh`](scripts/run_fdb_v3.sh) — one command, install through evaluate |
