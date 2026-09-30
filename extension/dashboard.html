@@ -62,7 +62,6 @@
   .view.active { display: flex; }
 
   /* ---------- Live tab ---------- */
-  #view-live { }
   .col { padding: 16px; overflow-y: auto; }
   .col h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 0 0 10px 0; font-weight: 700; }
   .card {
@@ -82,7 +81,9 @@
   .btn:disabled { background: var(--border); color: var(--muted); cursor: default; box-shadow: none; }
   select { width: 100%; margin-top: 6px; padding: 9px; border-radius: 12px; background: var(--panel-grad);
     color: var(--text); border: 1px solid var(--border); font-size: 12px; }
-  #connStatus { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  /* #connStatus now lives inside the composer bar (.composer-text .line2 styles it) --
+     no standalone margin, or it pushes the composer's two lines apart. */
+  #connStatus { color: var(--muted); }
 
   .agent-avatar { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .avatar-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--mint-strong); position: relative; }
@@ -196,6 +197,108 @@
     .stage .name { font-size: 9.5px; }
     .stage .detail, .stage .ms { font-size: 8.5px; }
   }
+
+  /* ================= Assistant tab — the actual end-user support app ================= */
+  #view-assistant { background: var(--bg); }
+  .side { width: 300px; flex-shrink: 0; padding: 18px 16px; overflow-y: auto; }
+  .side.right { width: 330px; }
+  .side h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin: 0 0 10px 0; font-weight: 700; }
+
+  .device-card { background: var(--panel); border: 1px solid var(--border); border-radius: 20px;
+    padding: 18px; box-shadow: var(--shadow); }
+  .device-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .device-glyph { width: 42px; height: 42px; border-radius: 13px; background: var(--mint);
+    display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .device-name { font-weight: 700; font-size: 14px; color: var(--ink); }
+  .device-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .dev-row { display: flex; justify-content: space-between; align-items: center;
+    font-size: 12.5px; padding: 7px 0; border-top: 1px solid var(--border); }
+  .dev-row:first-of-type { border-top: none; }
+  .dev-row .k { color: var(--muted); }
+  .dev-row .v { font-weight: 600; color: var(--ink); }
+  .dev-row .v.stale { color: var(--muted); font-weight: 500; }
+  .batt-track { height: 6px; background: var(--panel-grad); border-radius: 999px;
+    overflow: hidden; margin-top: 8px; }
+  .batt-fill { height: 100%; background: var(--mint-strong); border-radius: 999px; width: 0%;
+    transition: width 0.4s ease; }
+  .dev-hint { font-size: 11.5px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip-topic { background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    padding: 7px 13px; font-size: 12px; cursor: pointer; color: var(--ink);
+    box-shadow: var(--shadow-sm); }
+  .chip-topic:hover { background: var(--mint); border-color: var(--mint-strong); }
+
+  /* ---- conversation ---- */
+  .chat-col { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 18px 20px 16px; }
+  .chat-head { display: flex; align-items: center; gap: 11px; margin-bottom: 12px; }
+  .chat-head .who { font-weight: 700; font-size: 15px; color: var(--ink); }
+  .chat-head .state { font-size: 12px; color: var(--muted); }
+  .chat-wrap { flex: 1; min-height: 0; overflow-y: auto; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 22px; padding: 20px 22px;
+    box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 14px; }
+  .chat-empty { margin: auto; text-align: center; color: var(--muted); font-size: 13.5px; max-width: 360px; line-height: 1.7; }
+  .chat-empty .big { font-size: 34px; display: block; margin-bottom: 10px; }
+  .msg { display: flex; gap: 10px; align-items: flex-end; }
+  .msg.user { flex-direction: row-reverse; }
+  .msg-avatar { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+    background: var(--panel-grad); border: 1px solid var(--border); }
+  .msg.agent .msg-avatar { background: var(--mint); border-color: transparent; }
+  .bubble { max-width: 68%; padding: 11px 15px; border-radius: 18px; font-size: 13.5px;
+    line-height: 1.6; }
+  .msg.agent .bubble { background: var(--panel-grad); border-bottom-left-radius: 6px; color: var(--ink); }
+  .msg.user .bubble { background: var(--mint); border-bottom-right-radius: 6px; color: var(--ink); }
+  .bubble.interim { opacity: 0.6; font-style: italic; }
+  .msg-photo { max-width: 190px; border-radius: 14px; display: block; }
+  .typing span { display: inline-block; width: 6px; height: 6px; margin-right: 3px;
+    border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+
+  /* ---- composer ---- */
+  .composer { display: flex; align-items: center; gap: 14px; margin-top: 14px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    padding: 10px 16px 10px 12px; box-shadow: var(--shadow); }
+  .mic-btn { width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--ink); color: #fff; font-size: 21px; flex-shrink: 0; position: relative;
+    display: flex; align-items: center; justify-content: center; }
+  .mic-btn:disabled { background: var(--border); color: var(--muted); cursor: default; }
+  .mic-btn.listening { background: var(--mint-strong); }
+  .mic-btn.listening::after { content: ''; position: absolute; inset: -5px; border-radius: 50%;
+    border: 2px solid var(--mint-strong); animation: pulse-ring 1.4s ease-out infinite; }
+  .mic-btn.muted { background: var(--danger); }
+  .composer-text { flex: 1; min-width: 0; }
+  .composer-text .line1 { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .composer-text .line2 { font-size: 11.5px; color: var(--muted); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn { width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--border);
+    background: var(--panel-grad); cursor: pointer; font-size: 17px; flex-shrink: 0; }
+  .icon-btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* ---- what I did (user-facing action feed) ---- */
+  .action-item { display: flex; gap: 11px; padding: 11px 13px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 16px; margin-bottom: 9px;
+    box-shadow: var(--shadow-sm); }
+  .action-ico { width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0; font-size: 14px;
+    display: flex; align-items: center; justify-content: center; background: var(--mint); }
+  .action-ico.wait { background: #FEF0D5; }
+  .action-ico.skip { background: var(--panel-grad); }
+  .action-ico.risk { background: #FDE2E2; }
+  .action-body .title { font-size: 12.8px; font-weight: 600; color: var(--ink); }
+  .action-body .sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .feed-empty { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+  .guide-card { background: var(--mint); border-radius: 16px; padding: 13px 15px;
+    font-size: 12.8px; line-height: 1.6; color: var(--ink); margin-bottom: 9px; }
+  .guide-card .gtitle { font-weight: 700; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.6px; margin-bottom: 5px; }
+
+  @media (max-width: 1100px) {
+    .side { width: 250px; }
+    .side.right { width: 260px; }
+  }
 </style>
 </head>
 <body>
@@ -203,7 +306,8 @@
 <header>
   <h1>SentinelEdge</h1>
   <div class="tabs">
-    <button class="tab-btn active" data-view="live">Live</button>
+    <button class="tab-btn active" data-view="assistant">Assistant</button>
+    <button class="tab-btn" data-view="diagnostics">Diagnostics</button>
     <button class="tab-btn" data-view="results">Results</button>
     <button class="tab-btn" data-view="explorer">Benchmark Explorer</button>
     <button class="tab-btn" data-view="architecture">Architecture</button>
@@ -214,26 +318,89 @@
 </header>
 
 <main>
-  <div class="view active" id="view-live">
+  <!-- ============ ASSISTANT: what an actual device-support customer sees ============ -->
+  <div class="view active" id="view-assistant">
+    <div class="side">
+      <h3>My device</h3>
+      <div class="device-card">
+        <div class="device-head">
+          <div class="device-glyph">📱</div>
+          <div>
+            <div class="device-name">Galaxy S24</div>
+            <div class="device-sub" id="devSoftware">Software — not checked yet</div>
+          </div>
+        </div>
+        <div class="dev-row"><span class="k">Battery</span><span class="v stale" id="devBattery">—</span></div>
+        <div class="batt-track"><div class="batt-fill" id="devBattBar"></div></div>
+        <div class="dev-row"><span class="k">Wi-Fi</span><span class="v stale" id="devWifi">—</span></div>
+        <div class="dev-row"><span class="k">Bluetooth</span><span class="v stale" id="devBt">—</span></div>
+        <div class="dev-row"><span class="k">Free storage</span><span class="v stale" id="devStorage">—</span></div>
+        <div class="dev-hint" id="devHint">Ask the assistant to check your device and these will fill in.</div>
+      </div>
+
+      <h3 style="margin-top:20px;">Common issues</h3>
+      <div class="chip-row" id="topicChips">
+        <button class="chip-topic" data-say="My Wi-Fi keeps disconnecting">Wi-Fi</button>
+        <button class="chip-topic" data-say="My Bluetooth won't pair">Bluetooth</button>
+        <button class="chip-topic" data-say="My battery is draining fast">Battery</button>
+        <button class="chip-topic" data-say="My screen is flickering">Screen</button>
+        <button class="chip-topic" data-say="I'm running out of storage">Storage</button>
+        <button class="chip-topic" data-say="My camera won't focus">Camera</button>
+        <button class="chip-topic" data-say="How do I update my software?">Update</button>
+      </div>
+      <div class="dev-hint" id="chipHint">Tap one to see how to phrase it, then say it out loud.</div>
+    </div>
+
+    <div class="chat-col">
+      <div class="chat-head">
+        <span class="avatar-dot" id="avatarDot"></span>
+        <span class="who">Support assistant</span>
+        <span class="state" id="agentStatus">Not connected</span>
+      </div>
+      <div class="chat-wrap" id="chat">
+        <div class="chat-empty" id="chatEmpty">
+          <span class="big">🎧</span>
+          Start a session and just talk — describe what's wrong with your device in your own words.
+          You can change your mind mid-sentence; the assistant keeps up.
+        </div>
+      </div>
+      <div class="composer">
+        <button class="mic-btn" id="joinBtn" title="Start talking">🎙️</button>
+        <div class="composer-text">
+          <div class="line1" id="composerLine">Tap the mic to start</div>
+          <div class="line2" id="connStatus">Not connected</div>
+        </div>
+        <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
+        <button class="icon-btn" id="sendPhotoBtn" disabled title="Send a photo of the device">📷</button>
+        <button class="icon-btn" id="muteBtn" disabled title="Mute microphone">🔇</button>
+      </div>
+    </div>
+
+    <div class="side right">
+      <h3>What I did for you</h3>
+      <div id="actionFeed">
+        <div class="feed-empty">Nothing yet. When the assistant checks your device, opens a
+          setting, or looks something up, it shows here so you can see exactly what happened.</div>
+      </div>
+      <img id="photoThumb" style="display:none; width:100%; border-radius:16px; margin-top:6px;">
+      <div class="dev-hint" id="photoStatus"></div>
+    </div>
+  </div>
+
+  <!-- ============ DIAGNOSTICS: the developer/judge view ============ -->
+  <div class="view" id="view-diagnostics">
     <div class="col left-col">
       <h2>Session</h2>
-      <button class="btn" id="joinBtn">Join with mic</button>
-      <button class="btn secondary" id="muteBtn" disabled>🎤 Mute mic</button>
       <select id="replaySelect"><option value="">Replay: none available</option></select>
       <button class="btn secondary" id="replayBtn" disabled>▶ Play replay</button>
       <button class="btn secondary" id="recordBtn" disabled>⏺ Record this session</button>
-      <div id="connStatus">Not connected</div>
-      <div id="agentStatus" style="font-size:11px;color:var(--muted);margin-top:4px;">Agent: not joined</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:10px;line-height:1.5;">
+        Mic, photo and the conversation itself live on the <b>Assistant</b> tab — this tab is the
+        instrumented view of the same live session.
+      </div>
 
-      <h2 style="margin-top:16px;">Photo</h2>
-      <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
-      <button class="btn secondary" id="sendPhotoBtn" disabled>📷 Send photo</button>
-      <img id="photoThumb" style="display:none; width:100%; border-radius:10px; margin-top:8px;">
-      <div id="photoStatus" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
-
-      <h2 style="margin-top:16px;">Conversation</h2>
+      <h2 style="margin-top:16px;">Raw transcript</h2>
       <div class="card">
-        <div class="agent-avatar"><span class="avatar-dot" id="avatarDot"></span><span style="font-size:12px;color:var(--muted);">agent</span></div>
         <div id="captions"><div class="empty">Waiting for you to speak…</div></div>
       </div>
     </div>
@@ -416,7 +583,126 @@ function addTimelineEntry(html) {
   timelineEl.prepend(div);
 }
 
+/* =========================================================================================
+   USER-FACING LAYER (Assistant tab) — the same live events, rendered the way a customer
+   should see them: plain-language actions, a device card that fills in from real tool
+   results, and a chat transcript. The Diagnostics tab keeps the raw/instrumented view.
+   ========================================================================================= */
+const chatEl = document.getElementById('chat');
+const chatEmptyEl = document.getElementById('chatEmpty');
+const chatRows = { user: null, agent: null };
+
+function chatAppend(who, text, isFinal) {
+  if (chatEmptyEl && chatEmptyEl.parentNode) chatEmptyEl.remove();
+  let row = chatRows[who];
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'msg ' + who;
+    row.innerHTML = `<div class="msg-avatar">${who === 'agent' ? '🎧' : '🙂'}</div>` +
+                    `<div class="bubble"></div>`;
+    chatEl.appendChild(row);
+  }
+  const bubble = row.querySelector('.bubble');
+  bubble.textContent = text;
+  bubble.classList.toggle('interim', !isFinal);
+  chatRows[who] = isFinal ? null : row;
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function chatAppendPhoto(dataUrl) {
+  if (chatEmptyEl && chatEmptyEl.parentNode) chatEmptyEl.remove();
+  const row = document.createElement('div');
+  row.className = 'msg user';
+  row.innerHTML = `<div class="msg-avatar">🙂</div>` +
+                  `<div class="bubble"><img class="msg-photo" src="${dataUrl}"></div>`;
+  chatEl.appendChild(row);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+const feedEl = document.getElementById('actionFeed');
+let feedFirst = true;
+function addAction(icoClass, ico, title, sub) {
+  if (feedFirst) { feedEl.innerHTML = ''; feedFirst = false; }
+  const item = document.createElement('div');
+  item.className = 'action-item';
+  item.innerHTML = `<div class="action-ico ${icoClass}">${ico}</div><div class="action-body">` +
+                   `<div class="title"></div>${sub ? '<div class="sub"></div>' : ''}</div>`;
+  item.querySelector('.title').textContent = title;
+  if (sub) item.querySelector('.sub').textContent = sub;
+  feedEl.prepend(item);
+  while (feedEl.children.length > 25) feedEl.removeChild(feedEl.lastChild);
+}
+
+function addGuide(topic, snippet) {
+  if (feedFirst) { feedEl.innerHTML = ''; feedFirst = false; }
+  const card = document.createElement('div');
+  card.className = 'guide-card';
+  card.innerHTML = `<div class="gtitle"></div><div class="gbody"></div>`;
+  card.querySelector('.gtitle').textContent = (topic || 'guide') + ' — steps';
+  card.querySelector('.gbody').textContent = snippet;
+  feedEl.prepend(card);
+}
+
+// Plain-language names for the four device tools -- what the user should read, instead of
+// the function name the model actually called.
+const FRIENDLY = {
+  get_device_status: { ico: '📊', title: 'Checked your device' },
+  lookup_manual: { ico: '📖', title: 'Looked up the official steps' },
+  open_settings: { ico: '⚙️', title: 'Opened a settings screen' },
+  reset_network_settings: { ico: '♻️', title: 'Reset your network settings' },
+};
+
+function updateDeviceCard(r) {
+  if (!r || typeof r !== 'object') return;
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val !== undefined && val !== null) { el.textContent = val; el.classList.remove('stale'); }
+  };
+  if (r.battery_percent !== undefined) {
+    set('devBattery', r.battery_percent + '%');
+    document.getElementById('devBattBar').style.width = r.battery_percent + '%';
+  }
+  if (r.wifi_connected !== undefined) set('devWifi', r.wifi_connected ? 'Connected' : 'Not connected');
+  if (r.bluetooth_connected !== undefined) set('devBt', r.bluetooth_connected ? 'Connected' : 'Not connected');
+  if (r.storage_free_gb !== undefined) set('devStorage', r.storage_free_gb + ' GB free');
+  if (r.software_version) document.getElementById('devSoftware').textContent = 'Software ' + r.software_version;
+  const hint = document.getElementById('devHint');
+  if (hint) hint.textContent = r.last_reboot_hours_ago !== undefined
+    ? `Last restarted about ${r.last_reboot_hours_ago} hours ago.` : 'Device details are up to date.';
+}
+
+function handleUserFacingGate(msg) {
+  const f = FRIENDLY[msg.tool] || { ico: '•', title: msg.tool };
+  switch (msg.event) {
+    case 'executed': {
+      const r = msg.result || {};
+      if (msg.tool === 'get_device_status') { updateDeviceCard(r); addAction('', f.ico, f.title, 'Battery, storage, Wi-Fi and software version refreshed.'); }
+      else if (msg.tool === 'lookup_manual') {
+        if (r.snippet) { addGuide(r.topic, r.snippet); addAction('', f.ico, f.title, 'Steps for "' + (r.topic || '') + '" are shown above.'); }
+        else addAction('skip', f.ico, f.title, r.message || 'No matching guide found.');
+      }
+      else if (msg.tool === 'open_settings') addAction('', f.ico, f.title, 'Opened ' + (r.opened_panel || 'settings') + '.');
+      else if (msg.tool === 'reset_network_settings') addAction('risk', f.ico, f.title, r.message || 'Wi-Fi and Bluetooth will need reconnecting.');
+      else addAction('', f.ico, f.title, '');
+      break;
+    }
+    case 'confirmation_required':
+      addAction('wait', '⏸️', 'Waiting for your OK', 'This one clears saved Wi-Fi networks and Bluetooth pairings, so it needs your confirmation first.');
+      break;
+    case 'blocked_duplicate':
+      addAction('skip', '✓', 'Skipped a repeat', 'That was already done in this session, so it was not run twice.');
+      break;
+    case 'superseded':
+      addAction('skip', '↩️', 'Caught your correction', 'You changed your mind, so the earlier action was dropped before it ran.');
+      break;
+    case 'resolver_corrected_arg':
+      addAction('skip', '↩️', 'Used your corrected wording', `Changed "${msg.from_value}" to "${msg.to_value}".`);
+      break;
+  }
+}
+
 function handleGateEvent(msg) {
+  try { handleUserFacingGate(msg); } catch (e) { console.warn('user-facing render failed (ignored):', e); }
   switch (msg.event) {
     case 'buffered':
       setStage(4, 'active', `buffered ${msg.buffer_ms}ms`, msg.buffer_ms);
@@ -503,6 +789,9 @@ function handleCaption(msg) {
   captionRows[who] = msg.is_final ? null : row;
   captionsEl.scrollTop = captionsEl.scrollHeight;
 
+  // same event, rendered as a chat bubble for the customer-facing Assistant tab
+  try { chatAppend(who, msg.text, msg.is_final); } catch (e) { console.warn('chat render failed (ignored):', e); }
+
   if (who === 'user') setStage(1, 'active', msg.text.split(' ').slice(-6).join(' '));
   else {
     setStage(6, 'active', msg.text.split(' ').slice(0, 6).join(' '));
@@ -514,26 +803,38 @@ function handleCaption(msg) {
 
 /* ---------- Part 4: granular connection/agent status (device_agent.py's "status" topic) ---------- */
 const agentStatusEl = document.getElementById('agentStatus');
+const composerLineEl = document.getElementById('composerLine');
+// Customer-facing wording: the same underlying events, without the room/track vocabulary.
 function handleStatus(msg) {
   switch (msg.event) {
-    case 'participant_connected': agentStatusEl.textContent = 'Agent: joined the room'; break;
+    case 'participant_connected': agentStatusEl.textContent = 'Connecting…'; break;
     case 'track_subscribed':
-      if (msg.kind && msg.kind.toLowerCase().includes('audio')) agentStatusEl.textContent = 'Agent: subscribed to your mic';
+      if (msg.kind && msg.kind.toLowerCase().includes('audio')) agentStatusEl.textContent = 'Can hear you';
       break;
-    case 'agent_ready': agentStatusEl.textContent = 'Agent: ready — listening'; break;
+    case 'agent_ready':
+      agentStatusEl.textContent = 'Listening';
+      composerLineEl.textContent = 'Listening — go ahead';
+      break;
     case 'agent_state':
-      if (msg.state === 'listening' || msg.state === 'idle') agentStatusEl.textContent = 'Agent: listening';
-      else if (msg.state === 'thinking') agentStatusEl.textContent = 'Agent: thinking…';
-      else if (msg.state === 'speaking') agentStatusEl.textContent = 'Agent: speaking';
+      if (msg.state === 'listening' || msg.state === 'idle') { agentStatusEl.textContent = 'Listening'; composerLineEl.textContent = 'Listening — go ahead'; }
+      else if (msg.state === 'thinking') { agentStatusEl.textContent = 'Thinking…'; composerLineEl.textContent = 'Working on it…'; }
+      else if (msg.state === 'speaking') { agentStatusEl.textContent = 'Speaking'; composerLineEl.textContent = 'Answering — you can interrupt any time'; }
       break;
     case 'photo_received':
-      document.getElementById('photoStatus').textContent = `Photo sent (${msg.bytes} bytes) — agent has it now.`;
+      document.getElementById('photoStatus').textContent = 'Photo delivered — the assistant can see it.';
       break;
     case 'photo_failed':
       document.getElementById('photoStatus').textContent = 'Photo failed to send: ' + msg.detail;
       break;
-    case 'error': agentStatusEl.textContent = 'Agent: error — ' + msg.detail; break;
-    case 'close': agentStatusEl.textContent = 'Agent: session closed (' + msg.reason + ')'; break;
+    case 'error':
+      agentStatusEl.textContent = 'Something went wrong';
+      composerLineEl.textContent = 'Connection problem — try starting again';
+      addAction('risk', '⚠️', 'Session error', String(msg.detail || ''));
+      break;
+    case 'close':
+      agentStatusEl.textContent = 'Session ended';
+      composerLineEl.textContent = 'Session ended — tap the mic to start again';
+      break;
   }
 }
 
@@ -616,8 +917,13 @@ document.getElementById('joinBtn').onclick = async () => {
       statusEl.textContent = 'Disconnected'; setConn('Idle');
       document.getElementById('muteBtn').disabled = true;
       document.getElementById('sendPhotoBtn').disabled = true;
+      joinBtn.disabled = false;
+      joinBtn.classList.remove('listening', 'muted');
+      composerLineEl.textContent = 'Tap the mic to start again';
+      agentStatusEl.textContent = 'Not connected';
     });
 
+    composerLineEl.textContent = 'Connecting…';
     statusEl.textContent = 'Connecting...';
     await room.connect(url, token);
     // Browsers block audio autoplay until a user gesture unlocks it; startAudio() (called here,
@@ -626,7 +932,8 @@ document.getElementById('joinBtn').onclick = async () => {
     await room.startAudio();
     room.on(LivekitClient.RoomEvent.AudioPlaybackStatusChanged, () => {
       if (!room.canPlaybackAudio) {
-        agentStatusEl.textContent = 'Agent: audio blocked by the browser — click anywhere on the page to enable sound.';
+        agentStatusEl.textContent = 'Sound blocked';
+        composerLineEl.textContent = 'Click anywhere on the page to enable sound';
       }
     });
     statusEl.textContent = 'Connected — enabling mic...';
@@ -640,13 +947,16 @@ document.getElementById('joinBtn').onclick = async () => {
     const micPub = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
     console.log('Mic track published:', !!(micPub && micPub.track), micPub && micPub.trackSid);
 
-    statusEl.textContent = 'Live — talk to the agent now.';
+    statusEl.textContent = 'Microphone on';
+    composerLineEl.textContent = 'Listening — go ahead';
+    joinBtn.classList.add('listening');
     document.getElementById('recordBtn').disabled = false;
     document.getElementById('muteBtn').disabled = false;
     document.getElementById('sendPhotoBtn').disabled = false;
   } catch (err) {
     console.error('Join failed:', err);
     statusEl.textContent = 'Error: ' + (err && err.message ? err.message : String(err));
+    composerLineEl.textContent = 'Could not start — tap to retry';
     joinBtn.disabled = false;
   }
 };
@@ -655,7 +965,13 @@ document.getElementById('muteBtn').onclick = async () => {
   if (!currentRoom) return;
   micEnabled = !micEnabled;
   await currentRoom.localParticipant.setMicrophoneEnabled(micEnabled);
-  document.getElementById('muteBtn').textContent = micEnabled ? '🎤 Mute mic' : '🔇 Unmute mic';
+  const mute = document.getElementById('muteBtn');
+  const join = document.getElementById('joinBtn');
+  mute.textContent = micEnabled ? '🔇' : '🎤';
+  mute.title = micEnabled ? 'Mute microphone' : 'Unmute microphone';
+  join.classList.toggle('listening', micEnabled);
+  join.classList.toggle('muted', !micEnabled);
+  composerLineEl.textContent = micEnabled ? 'Listening — go ahead' : 'Microphone muted';
 };
 
 /* ---------- Part 3: single-photo snapshot (voice-only session, no continuous camera) ---------- */
@@ -678,20 +994,30 @@ photoInput.onchange = async () => {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
     const bytes = new Uint8Array(await blob.arrayBuffer());
 
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
     const thumb = document.getElementById('photoThumb');
-    thumb.src = canvas.toDataURL('image/jpeg', 0.85);
+    thumb.src = dataUrl;
     thumb.style.display = 'block';
+    chatAppendPhoto(dataUrl);   // show it in the conversation, the way a chat app would
 
     photoStatusEl.textContent = 'Sending photo...';
     await currentRoom.localParticipant.sendBytes(bytes, {
       topic: 'snapshot', mimeType: 'image/jpeg', name: 'snapshot.jpg',
     });
-    photoStatusEl.textContent = 'Photo sent — waiting for the agent to receive it...';
+    photoStatusEl.textContent = 'Photo sent — waiting for the assistant to receive it…';
   } catch (err) {
     console.error('Send photo failed:', err);
     photoStatusEl.textContent = 'Error sending photo: ' + (err && err.message ? err.message : String(err));
   }
 };
+
+/* ---------- Common-issue chips: voice-first, so these suggest the phrase to say ---------- */
+document.querySelectorAll('.chip-topic').forEach((chip) => {
+  chip.onclick = () => {
+    const hint = document.getElementById('chipHint');
+    hint.textContent = `Try saying: "${chip.dataset.say}"`;
+  };
+});
 
 /* ---------- Replay mode ---------- */
 async function loadReplayList() {
