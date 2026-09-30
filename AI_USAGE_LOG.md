@@ -247,3 +247,44 @@ not hang a superseded waiter; the call budget is unbounded by default; the budge
 its ceiling; and the budget does not count superseded calls. All 45 pass. Both flags wired
 opt-in, unset by default, in both `agent/lk_agent.py` and `extension/device_agent.py` — the
 extension worker was restarted on this code and registered cleanly.
+
+## 2026-09-30 — UI redesign, duplicate-process cleanup, and a real hallucinated-tool-call finding
+
+**UI**: user pasted a reference screenshot (a light, card-based dashboard template) and asked
+for the extension dashboard's look to follow it. Rewrote `extension/dashboard.html`'s CSS only —
+new light theme (white rounded cards on a soft-gray page background, mint-green accent for
+active/success states, near-black pill buttons/active tabs, soft shadows instead of the old dark
+neon-glow look). Zero HTML structure or JS changed, so every feature (join flow, mic mute, photo
+send, live transcript, pipeline stages, commit-gate panel, Results/Explorer/Architecture tabs)
+kept working exactly as before — verified via `pytest` (unaffected, but run anyway) and by
+re-serving the page and grepping the response for the new theme's CSS variables.
+
+**Duplicate processes**: user reported "agent is not connecting" with the browser showing
+"Agent: not joined" and zero server-side log activity for that join. Investigation found two
+`device_agent.py` (and two `web_client.py`) processes alive simultaneously — traced via
+`Get-CimInstance Win32_Process` to get real command lines, not just `tasklist`. Killed all four
+and started exactly one clean instance of each. Caveat recorded honestly: on re-investigation,
+this specific 2-process-per-launch pattern turned out to be normal Windows venv launcher/child
+behavor (present on every single launch all session, including ones that worked fine earlier),
+not a genuine duplicate LiveKit registration — so this cleanup may not have been the actual fix
+for that specific complaint, and was reported to the user as an uncertain fix, not a confirmed
+one.
+
+**Real bug found and root-caused, not yet fixed (model behavior, not our code)**: user pasted a
+live conversation transcript where the agent said "I'm having some difficulty accessing
+diagnostic information and the manual" and later "It seems I'm unable to open the settings" —
+sounding exactly like real tool-call failures. Traced the exact log lines for that session
+(`device_agent_run18.log`, job `AJ_MVR46pudMhq4`, 2026-09-30T03:26-03:28 UTC): zero
+`buffered`/`executed`/`call_failed` events anywhere in it. The model never attempted to call
+`lookup_manual`, `open_settings`, or `get_device_status` even once — it fabricated a plausible-
+sounding excuse instead of either calling the tool or admitting it wasn't calling one, directly
+violating `device_instructions.py`'s explicit "always call the tool" instruction. Verified tool
+registration itself works correctly by running `llm.find_function_tools(fnc_ctx)` standalone
+(found all 4 tools) — ruling out a wiring regression. The failing session's worker process had
+been running 13+ hours continuously with earlier signs of connection instability logged
+(`resuming connection`, `No PONG received after 15.0 seconds`, `worker connection closed
+unexpectedly`) — consistent with, though not proven to be caused by, long-running-process
+degradation. Added a one-line diagnostic (`tools_registered: count=N names=[...]`) logged at
+every session start, so a repeat of this exact failure mode can be confirmed or ruled out
+(tools present vs. genuinely absent for that specific session) from the log alone next time.
+Restarted the worker fresh and asked the user to retry the same phrase to see if it recurs.
